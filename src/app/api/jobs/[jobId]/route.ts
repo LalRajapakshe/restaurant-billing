@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { mockJobs } from "@/data/mock-jobs";
 
 type JobRouteContext = {
     params: Promise<{ jobId: string }>;
@@ -6,65 +7,47 @@ type JobRouteContext = {
 
 export async function GET(
     request: NextRequest,
-    context: JobRouteContext
+    { params }: JobRouteContext
 ) {
-    try {
-        const { jobId } = await context.params;
+    const { jobId } = await params;
+    const job = mockJobs.find((item) => item.id === jobId);
 
-        return NextResponse.json({
-            success: true,
-            data: {
-                id: jobId,
-            },
-        });
-    } catch (error) {
-        return NextResponse.json(
-            { error: "Failed to fetch job" },
-            { status: 500 }
-        );
+    if (!job) {
+        return NextResponse.json({ error: "Job not found" }, { status: 404 });
     }
+
+    return NextResponse.json({
+        success: true,
+        data: job,
+    });
 }
 
 export async function PUT(
     request: NextRequest,
-    context: JobRouteContext
+    { params }: JobRouteContext
 ) {
-    try {
-        const { jobId } = await context.params;
-        const body = await request.json().catch(() => ({}));
+    const { jobId } = await params;
+    const body = await request.json().catch(() => ({}));
 
-        return NextResponse.json({
-            success: true,
-            data: {
-                id: jobId,
-                ...body,
-            },
-        });
-    } catch (error) {
-        return NextResponse.json(
-            { error: "Failed to update job" },
-            { status: 500 }
-        );
-    }
+    return NextResponse.json({
+        success: true,
+        message: "Mock job update accepted.",
+        data: {
+            id: jobId,
+            ...body,
+        },
+    });
 }
 
 export async function DELETE(
     request: NextRequest,
-    context: JobRouteContext
+    { params }: JobRouteContext
 ) {
-    try {
-        const { jobId } = await context.params;
+    const { jobId } = await params;
 
-        return NextResponse.json({
-            success: true,
-            data: {
-                id: jobId,
-            },
-        });
-    } catch (error) {
-        return NextResponse.json(
-            { error: "Failed to delete job" },
-            { status: 500 }
-        );
-    }
+    return NextResponse.json({
+        success: true,
+        message: "Mock job delete accepted.",
+        data: { id: jobId },
+    });
 }

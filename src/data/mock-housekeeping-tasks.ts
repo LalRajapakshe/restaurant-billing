@@ -1,0 +1,43 @@
+import { HousekeepingTaskRecord } from "@/types/housekeeping";
+
+export const mockHousekeepingTasks: HousekeepingTaskRecord[] = [
+  {
+    id: "HK-5001",
+    roomId: "RM-302",
+    roomNo: "302",
+    roomType: "Family Suite",
+    floor: "3rd Floor",
+    status: "Dirty",
+    assignedTo: "",
+    cleanedBy: "",
+    note: "Departure completed. Final cleaning required before next allocation.",
+    createdAt: "2026-04-22T10:05:00.000Z",
+    completedAt: "",
+  },
+  {
+    id: "HK-5002",
+    roomId: "RM-303",
+    roomNo: "303",
+    roomType: "Family Suite",
+    floor: "3rd Floor",
+    status: "Cleaning In Progress",
+    assignedTo: "Suresh",
+    cleanedBy: "",
+    note: "Bathroom deep cleaning in progress.",
+    createdAt: "2026-04-22T10:22:00.000Z",
+    completedAt: "",
+  },
+  {
+    id: "HK-5003",
+    roomId: "RM-204",
+    roomNo: "204",
+    roomType: "Executive Twin",
+    floor: "2nd Floor",
+    status: "Ready",
+    assignedTo: "Nadeesha",
+    cleanedBy: "Nadeesha",
+    note: "Ready after final inspection.",
+    createdAt: "2026-04-22T08:10:00.000Z",
+    completedAt: "2026-04-22T08:42:00.000Z",
+  },
+];

@@ -1,19 +1,19 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
+import { mockBillsByJob } from "@/data/mock-bills";
 
 export async function GET() {
-  try {
-    // TODO: Implement bills list retrieval
-    return NextResponse.json({ success: true, data: [] });
-  } catch (error) {
-    return NextResponse.json({ error: 'Failed to fetch bills' }, { status: 500 });
-  }
+  return NextResponse.json({
+    success: true,
+    data: mockBillsByJob,
+  });
 }
 
-export async function POST(request: Request) {
-  try {
-    // TODO: Implement bill creation
-    return NextResponse.json({ success: true, data: {} }, { status: 201 });
-  } catch (error) {
-    return NextResponse.json({ error: 'Failed to create bill' }, { status: 500 });
-  }
+export async function POST(request: NextRequest) {
+  const body = await request.json().catch(() => ({}));
+
+  return NextResponse.json({
+    success: true,
+    message: "Mock bill accepted.",
+    data: body,
+  });
 }

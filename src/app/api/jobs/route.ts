@@ -1,19 +1,19 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
+import { mockJobs } from "@/data/mock-jobs";
 
 export async function GET() {
-  try {
-    // TODO: Implement jobs list retrieval
-    return NextResponse.json({ success: true, data: [] });
-  } catch (error) {
-    return NextResponse.json({ error: 'Failed to fetch jobs' }, { status: 500 });
-  }
+  return NextResponse.json({
+    success: true,
+    data: mockJobs,
+  });
 }
 
-export async function POST(request: Request) {
-  try {
-    // TODO: Implement job creation
-    return NextResponse.json({ success: true, data: {} }, { status: 201 });
-  } catch (error) {
-    return NextResponse.json({ error: 'Failed to create job' }, { status: 500 });
-  }
+export async function POST(request: NextRequest) {
+  const body = await request.json().catch(() => ({}));
+
+  return NextResponse.json({
+    success: true,
+    message: "Mock job accepted.",
+    data: body,
+  });
 }

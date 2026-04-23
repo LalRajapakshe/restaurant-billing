@@ -1,33 +1,130 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { BedDouble, CalendarClock, Hotel, Sparkles } from "lucide-react";
+import {
+  BedDouble,
+  CalendarClock,
+  CalendarDays,
+  Hotel,
+  Phone,
+  Sparkles,
+  Users,
+} from "lucide-react";
 
 import CheckoutPanel from "@/components/front-office/checkout-panel";
 import RoomAllocationForm from "@/components/front-office/room-allocation-form";
+import RoomFolioPanel from "@/components/front-office/room-folio-panel";
 import RoomList from "@/components/front-office/room-list";
-import RoomSummaryCard from "@/components/front-office/room-summary-card";
+import RoomStatusBadge from "@/components/front-office/room-status-badge";
 import AppShell from "@/components/layout/app-shell";
 import { Card, CardContent } from "@/components/ui/card";
-import { mockRooms } from "@/data/mock-rooms";
-import { RoomPayload, RoomRecord, RoomStatus } from "@/types/room";
+import {
+  FolioEntry,
+  FolioEntryType,
+  FolioPaymentMethod,
+  FolioSourceModule,
+} from "@/types/folio";
+import { BoardBasis, RoomPayload, RoomRecord, RoomStatus } from "@/types/room";
 
-type ApiMode = "loading" | "connected" | "fallback";
+type ApiMode = "loading" | "connected" | "error";
 type MessageTone = "success" | "warning" | "info";
+type WorkTab = "stay" | "folio" | "checkout";
+
+type ApiEnvelope<T> = {
+  success: boolean;
+  data: T;
+  error?: string;
+};
+
+type RoomListApiRow = {
+  roomId: number;
+  roomNo: string;
+  roomType: string;
+  floorName: string;
+  defaultRate: number;
+  currentStatus: RoomStatus;
+  notes?: string | null;
+  housekeepingNote?: string | null;
+  stayId?: number | null;
+  reservationId?: number | null;
+  guestName?: string | null;
+  mobileNo?: string | null;
+  checkInDate?: string | null;
+  expectedCheckOutDate?: string | null;
+  nights?: number | null;
+  adults?: number | null;
+  children?: number | null;
+  boardBasisId?: number | null;
+  boardBasisName?: string | null;
+  roomRate?: number | null;
+  stayStatus?: string | null;
+};
+
+type RoomDetailApiRow = {
+  roomId: number;
+  roomNo: string;
+  roomType: string;
+  floorName: string;
+  defaultRate: number;
+  currentStatus: RoomStatus;
+  notes?: string | null;
+  housekeepingNote?: string | null;
+  stayId?: number | null;
+  stayNo?: string | null;
+  reservationId?: number | null;
+  guestName?: string | null;
+  mobileNo?: string | null;
+  checkInDate?: string | null;
+  expectedCheckOutDate?: string | null;
+  actualCheckOutDate?: string | null;
+  nights?: number | null;
+  adults?: number | null;
+  children?: number | null;
+  boardBasisId?: number | null;
+  boardBasisName?: string | null;
+  roomRate?: number | null;
+  stayStatus?: string | null;
+  stayNote?: string | null;
+};
+
+type FolioEntryApiRow = {
+  folioEntryId: number;
+  stayId: number;
+  roomId: number;
+  entryType: "charge" | "payment" | "adjustment";
+  sourceModule: "room" | "restaurant" | "frontoffice" | "housekeeping";
+  sourceDocType: string;
+  sourceDocId?: string | null;
+  description: string;
+  debitAmount: number;
+  creditAmount: number;
+  postingDate: string;
+  paymentMethod?: FolioPaymentMethod | null;
+  note?: string | null;
+};
+
+type FolioSummaryApi = {
+  roomId: number;
+  roomNo: string;
+  stayId: number;
+  stayNo: string;
+  guestName: string;
+  chargesTotal: number;
+  paymentsTotal: number;
+  balance: number;
+  entries: FolioEntryApiRow[];
+} | null;
+
+const BOARD_BASIS_ID_BY_NAME: Record<string, number> = {
+  "Room Only": 1,
+  "Bed & Breakfast": 2,
+  "Half Board": 3,
+  "Full Board": 4,
+  "All Inclusive": 5,
+};
 
 function currency(value: number) {
   return `LKR ${value.toLocaleString()}`;
-}
-
-function calculateNights(arrivalDate?: string, departureDate?: string) {
-  if (!arrivalDate || !departureDate) return 0;
-
-  const start = new Date(arrivalDate);
-  const end = new Date(departureDate);
-  const diff = end.getTime() - start.getTime();
-  const days = Math.round(diff / (1000 * 60 * 60 * 24));
-
-  return Number.isFinite(days) && days > 0 ? days : 0;
 }
 
 function toneClasses(tone: MessageTone) {
@@ -40,14 +137,102 @@ function todayIsoDate() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function canWorkOnRoom(status?: RoomStatus) {
-  return status === "Vacant Ready" || status === "Reserved" || status === "Occupied";
+function tomorrowIsoDate() {
+  return new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+}
+
+
+function normalizeBoardBasis(value?: string | null): BoardBasis {
+  switch (value) {
+    case "Room Only":
+      return "Room Only";
+    case "Half Board":
+      return "Half Board";
+    case "Full Board":
+      return "Full Board";
+    case "Bed & Breakfast":
+      return "Room Only";
+    default:
+      return "Room Only";
+  }
+}
+
+function mapRoomRowToUi(row: RoomListApiRow | RoomDetailApiRow): RoomRecord {
+  return {
+    id: String(row.roomId),
+    roomNo: row.roomNo,
+    roomType: row.roomType,
+    floor: row.floorName,
+    rate: Number(row.roomRate ?? row.defaultRate ?? 0),
+    status: row.currentStatus,
+    reservationId: row.reservationId ? String(row.reservationId) : "",
+    guestName: row.guestName ?? "",
+    mobile: row.mobileNo ?? "",
+    arrivalDate: row.checkInDate ?? "",
+    departureDate: row.expectedCheckOutDate ?? "",
+    nights: Number(row.nights ?? 0),
+    adults: Number(row.adults ?? 0),
+    children: Number(row.children ?? 0),
+    boardBasis: normalizeBoardBasis(row.boardBasisName),
+    notes: "stayNote" in row ? row.stayNote ?? row.notes ?? "" : row.notes ?? "",
+    housekeepingNote: row.housekeepingNote ?? "",
+    lastCleanedBy: "",
+  };
+}
+
+
+function normalizeFolioSourceModule(
+  value: "room" | "restaurant" | "frontoffice" | "housekeeping"
+): FolioSourceModule {
+  switch (value) {
+    case "room":
+      return "room";
+    case "restaurant":
+      return "restaurant";
+    case "frontoffice":
+      return "frontoffice";
+    case "housekeeping":
+      return "room";
+    default:
+      return "room";
+  }
+}
+
+
+function normalizeFolioEntryType(
+  value: "charge" | "payment" | "adjustment"
+): FolioEntryType {
+  switch (value) {
+    case "charge":
+      return "charge";
+    case "payment":
+      return "payment";
+    case "adjustment":
+      return "charge";
+    default:
+      return "charge";
+  }
+}
+
+function mapFolioEntry(entry: FolioEntryApiRow): FolioEntry {
+  return {
+    id: String(entry.folioEntryId),
+    roomId: String(entry.roomId),
+    roomNo: "",
+    guestName: "",
+    reservationId: "",
+    sourceModule: normalizeFolioSourceModule(entry.sourceModule),
+    description: entry.description,
+    entryType: normalizeFolioEntryType(entry.entryType),
+    debit: Number(entry.debitAmount ?? 0),
+    credit: Number(entry.creditAmount ?? 0),
+    postedAt: entry.postingDate,
+    paymentMethod: entry.paymentMethod ?? null,
+    note: entry.note ?? undefined,
+  };
 }
 
 function createEmptyRoomForm(room?: RoomRecord | null): RoomPayload {
-  const today = todayIsoDate();
-  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-
   return {
     id: room?.id,
     roomNo: room?.roomNo ?? "",
@@ -63,8 +248,8 @@ function createEmptyRoomForm(room?: RoomRecord | null): RoomPayload {
     reservationId: room?.reservationId ?? "",
     guestName: room?.guestName ?? "",
     mobile: room?.mobile ?? "",
-    arrivalDate: room?.arrivalDate || today,
-    departureDate: room?.departureDate || tomorrow,
+    arrivalDate: room?.arrivalDate || todayIsoDate(),
+    departureDate: room?.departureDate || tomorrowIsoDate(),
     adults: room?.adults && room.adults > 0 ? room.adults : 2,
     children: room?.children ?? 0,
     boardBasis: room?.boardBasis ?? "Room Only",
@@ -74,78 +259,51 @@ function createEmptyRoomForm(room?: RoomRecord | null): RoomPayload {
   };
 }
 
-async function fireAndForget(url: string, payload: unknown, method: "POST" | "PUT") {
-  void fetch(url, {
-    method,
+async function readJson<T>(input: RequestInfo | URL, init?: RequestInit) {
+  const response = await fetch(input, {
+    ...init,
+    cache: "no-store",
     headers: {
       "Content-Type": "application/json",
+      ...(init?.headers ?? {}),
     },
-    body: JSON.stringify(payload),
-  }).catch(() => undefined);
+  });
+
+  const json = (await response.json().catch(() => ({}))) as ApiEnvelope<T>;
+
+  if (!response.ok || !json.success) {
+    throw new Error(json.error || "Request failed.");
+  }
+
+  return json.data;
 }
 
 export default function FrontOfficePage() {
-  const [rooms, setRooms] = useState<RoomRecord[]>(mockRooms);
-  const [selectedRoomId, setSelectedRoomId] = useState<string>(mockRooms[0]?.id ?? "");
+  const [rooms, setRooms] = useState<RoomRecord[]>([]);
+  const [selectedRoomDbId, setSelectedRoomDbId] = useState<number | null>(null);
+  const [selectedRoom, setSelectedRoom] = useState<RoomRecord | null>(null);
+  const [selectedStayId, setSelectedStayId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState<RoomStatus | "All">("All");
   const [apiMode, setApiMode] = useState<ApiMode>("loading");
   const [formMode, setFormMode] = useState<"allocate" | "update">("allocate");
-  const [form, setForm] = useState<RoomPayload>(createEmptyRoomForm(mockRooms[0]));
+  const [workTab, setWorkTab] = useState<WorkTab>("stay");
+  const [form, setForm] = useState<RoomPayload>(createEmptyRoomForm(null));
+  const [folioEntries, setFolioEntries] = useState<FolioEntry[]>([]);
+  const [folioBalance, setFolioBalance] = useState(0);
+  const [folioEntryCount, setFolioEntryCount] = useState(0);
+  const [folioPaymentForm, setFolioPaymentForm] = useState<{
+    amount: string;
+    method: Exclude<FolioPaymentMethod, "System">;
+  }>({
+    amount: "",
+    method: "Cash",
+  });
   const [message, setMessage] = useState<{ tone: MessageTone; text: string } | null>({
     tone: "info",
-    text: "Connecting to mock room API routes for initial room utilization load...",
+    text: "Front Office is now loading room, stay, folio, payment, and checkout data from the DB-backed API.",
   });
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadRooms() {
-      try {
-        const response = await fetch("/api/rooms", { cache: "no-store" });
-
-        if (!response.ok) {
-          throw new Error("Room API failed");
-        }
-
-        const json = await response.json();
-        const nextRooms = Array.isArray(json?.data)
-          ? (json.data as RoomRecord[])
-          : mockRooms;
-
-        if (!isMounted) return;
-
-        setRooms(nextRooms);
-        setSelectedRoomId(nextRooms[0]?.id ?? "");
-        setForm(createEmptyRoomForm(nextRooms[0] ?? null));
-        setApiMode("connected");
-        setMessage({
-          tone: "info",
-          text: "Front Office room data loaded from mock API. Allocation, checkout, and room-state demo updates are active.",
-        });
-      } catch {
-        if (!isMounted) return;
-
-        setRooms(mockRooms);
-        setSelectedRoomId(mockRooms[0]?.id ?? "");
-        setForm(createEmptyRoomForm(mockRooms[0] ?? null));
-        setApiMode("fallback");
-        setMessage({
-          tone: "warning",
-          text: "Using local fallback room data. The room utilization demo remains fully usable.",
-        });
-      }
-    }
-
-    loadRooms();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  const selectedRoom =
-    rooms.find((item) => item.id === selectedRoomId) ?? null;
+  const [busy, setBusy] = useState(false);
 
   const filteredRooms = useMemo(() => {
     return rooms.filter((item) => {
@@ -173,194 +331,248 @@ export default function FrontOfficePage() {
     setMessage({ text, tone });
   }
 
-  function startPrepareAllocation() {
-    if (!selectedRoom) {
-      showMessage("Select a room first.", "warning");
+  async function loadRooms(preferredRoomId?: number | null) {
+    const data = await readJson<RoomListApiRow[]>("/api/rooms");
+    const mapped = data.map(mapRoomRowToUi);
+    setRooms(mapped);
+    const nextSelected = preferredRoomId ?? selectedRoomDbId ?? (data[0]?.roomId ?? null);
+    setSelectedRoomDbId(nextSelected);
+    setApiMode("connected");
+  }
+
+  async function loadSelectedRoom(roomId: number) {
+    const data = await readJson<RoomDetailApiRow>(`/api/rooms/${roomId}`);
+    const mapped = mapRoomRowToUi(data);
+    setSelectedRoom(mapped);
+    setSelectedStayId(data.stayId ?? null);
+    setForm(createEmptyRoomForm(mapped));
+    setFormMode(data.stayId ? "update" : "allocate");
+  }
+
+  async function loadFolio(roomId: number) {
+    try {
+      const data = await readJson<FolioSummaryApi>(`/api/folios/by-room/${roomId}`);
+      if (!data) {
+        setFolioEntries([]);
+        setFolioBalance(0);
+        setFolioEntryCount(0);
+        return;
+      }
+      const mappedEntries = (data.entries ?? []).map(mapFolioEntry);
+      setFolioEntries(mappedEntries);
+      setFolioBalance(Number(data.balance ?? 0));
+      setFolioEntryCount(mappedEntries.length);
+      setSelectedStayId(data.stayId ?? null);
+    } catch {
+      setFolioEntries([]);
+      setFolioBalance(0);
+      setFolioEntryCount(0);
+    }
+  }
+
+  async function refreshRoomContext(roomId?: number | null) {
+    const targetRoomId = roomId ?? selectedRoomDbId;
+    if (!targetRoomId) return;
+    await loadRooms(targetRoomId);
+    await loadSelectedRoom(targetRoomId);
+    await loadFolio(targetRoomId);
+  }
+
+  useEffect(() => {
+    let mounted = true;
+    async function init() {
+      try {
+        await loadRooms();
+      } catch (error) {
+        console.error("Front Office init load failed", error);
+        if (mounted) {
+          setApiMode("error");
+          showMessage("Failed to load room data from DB API.", "warning");
+        }
+      }
+    }
+    void init();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedRoomDbId) {
+      setSelectedRoom(null);
+      setSelectedStayId(null);
+      setFolioEntries([]);
+      setFolioBalance(0);
+      setFolioEntryCount(0);
       return;
     }
 
-    if (!canWorkOnRoom(selectedRoom.status)) {
-      showMessage("This room cannot be allocated from front office right now.", "warning");
-      return;
-    }
+    void (async () => {
+      try {
+        await loadSelectedRoom(selectedRoomDbId);
+        await loadFolio(selectedRoomDbId);
+      } catch (error) {
+        console.error("Failed to load selected room context", error);
+        showMessage("Failed to load selected room details.", "warning");
+      }
+    })();
+  }, [selectedRoomDbId]);
 
-    setFormMode(selectedRoom.status === "Occupied" ? "update" : "allocate");
-    setForm(createEmptyRoomForm(selectedRoom));
+  function updateForm<K extends keyof RoomPayload>(field: K, value: RoomPayload[K]) {
+    setForm((prev) => ({ ...prev, [field]: value }));
   }
 
   function resetForm() {
     setForm(createEmptyRoomForm(selectedRoom));
-    setFormMode(selectedRoom?.status === "Occupied" ? "update" : "allocate");
+    setFormMode(selectedStayId ? "update" : "allocate");
   }
 
-  function updateForm<K extends keyof RoomPayload>(
-    field: K,
-    value: RoomPayload[K]
-  ) {
-    setForm((prev) => ({ ...prev, [field]: value }));
-  }
-
-  function validateForm() {
-    if (!selectedRoom) {
-      showMessage("Please select a room before saving allocation.", "warning");
-      return false;
-    }
-
-    if (!form.guestName?.trim()) {
-      showMessage("Guest name is required.", "warning");
-      return false;
-    }
-
-    if (!form.arrivalDate || !form.departureDate) {
-      showMessage("Arrival and departure dates are required.", "warning");
-      return false;
-    }
-
-    const nights = calculateNights(form.arrivalDate, form.departureDate);
-
-    if (nights <= 0) {
-      showMessage("Departure date must be after arrival date.", "warning");
-      return false;
-    }
-
-    if (!canWorkOnRoom(selectedRoom.status)) {
-      showMessage("This room status is not available for front office allocation.", "warning");
-      return false;
-    }
-
-    return true;
-  }
-
-  function handleSubmit(e: React.FormEvent) {
+  async function handleStaySubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!selectedRoom || !validateForm()) return;
+    if (!selectedRoomDbId || !selectedRoom) {
+      showMessage("Select a room first.", "warning");
+      return;
+    }
 
-    const nights = calculateNights(form.arrivalDate, form.departureDate);
-    const normalized: RoomRecord = {
-      id: selectedRoom.id,
-      roomNo: selectedRoom.roomNo,
-      roomType: form.roomType?.trim() || selectedRoom.roomType,
-      floor: form.floor?.trim() || selectedRoom.floor,
-      rate: Number(form.rate ?? selectedRoom.rate),
-      status: (form.status ?? "Reserved") as RoomStatus,
-      reservationId: form.reservationId?.trim() ?? "",
-      guestName: form.guestName?.trim() ?? "",
-      mobile: form.mobile?.trim() ?? "",
-      arrivalDate: form.arrivalDate ?? "",
-      departureDate: form.departureDate ?? "",
-      nights,
-      adults: Number(form.adults ?? 1),
-      children: Number(form.children ?? 0),
-      boardBasis: form.boardBasis ?? "Room Only",
-      notes: form.notes?.trim() ?? "",
-      housekeepingNote: selectedRoom.housekeepingNote,
-      lastCleanedBy: selectedRoom.lastCleanedBy,
-    };
+    const boardBasisId = BOARD_BASIS_ID_BY_NAME[form.boardBasis ?? "Room Only"];
+    if (!boardBasisId) {
+      showMessage("Board basis mapping is not available.", "warning");
+      return;
+    }
 
-    setRooms((prev) =>
-      prev.map((item) => (item.id === selectedRoom.id ? normalized : item))
-    );
-    setSelectedRoomId(normalized.id);
-    setFormMode("update");
-    setForm(createEmptyRoomForm(normalized));
+    setBusy(true);
 
-    fireAndForget(`/api/rooms/${normalized.id}`, normalized, "PUT");
+    try {
+      if (selectedStayId) {
+        await readJson(`/api/stays/${selectedStayId}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            guestName: form.guestName,
+            mobileNo: form.mobile,
+            expectedCheckOutDate: form.departureDate,
+            adults: Number(form.adults ?? 1),
+            children: Number(form.children ?? 0),
+            boardBasisId,
+            roomRate: Number(form.rate ?? 0),
+            note: form.notes ?? "",
+            updatedByUserId: null,
+          }),
+        });
+        showMessage(`Stay updated for Room ${selectedRoom.roomNo}.`, "success");
+      } else {
+        await readJson(`/api/stays`, {
+          method: "POST",
+          body: JSON.stringify({
+            roomId: selectedRoomDbId,
+            guestName: form.guestName,
+            mobileNo: form.mobile,
+            checkInDate: form.arrivalDate,
+            expectedCheckOutDate: form.departureDate,
+            adults: Number(form.adults ?? 1),
+            children: Number(form.children ?? 0),
+            boardBasisId,
+            roomRate: Number(form.rate ?? 0),
+            note: form.notes ?? "",
+            reservationId: form.reservationId ? Number(form.reservationId) || null : null,
+            createdByUserId: null,
+          }),
+        });
+        showMessage(`Stay created for Room ${selectedRoom.roomNo}.`, "success");
+      }
 
-    showMessage(
-      normalized.status === "Occupied"
-        ? `Room ${normalized.roomNo} checked in for ${normalized.guestName}.`
-        : `Room ${normalized.roomNo} reserved for ${normalized.guestName}.`,
-      "success"
-    );
+      await refreshRoomContext(selectedRoomDbId);
+      setWorkTab("folio");
+    } catch (error) {
+      console.error("Failed to save stay", error);
+      showMessage(error instanceof Error ? error.message : "Failed to save stay.", "warning");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function handleCheckout() {
-    if (!selectedRoom) {
-      showMessage("Select an occupied room before checkout.", "warning");
+  async function handleApplyPayment() {
+    if (!selectedRoomDbId || !selectedStayId || !selectedRoom) {
+      showMessage("No active stay is selected for payment.", "warning");
       return;
     }
 
-    if (selectedRoom.status !== "Occupied") {
-      showMessage("Only occupied rooms can be checked out.", "warning");
+    const amount = Number(folioPaymentForm.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      showMessage("Enter a valid payment amount.", "warning");
       return;
     }
 
-    const checkedOutRoom: RoomRecord = {
-      ...selectedRoom,
-      status: "Dirty",
-      reservationId: "",
-      guestName: "",
-      mobile: "",
-      arrivalDate: "",
-      departureDate: "",
-      nights: 0,
-      adults: 0,
-      children: 0,
-      boardBasis: "Room Only",
-      notes: "",
-      housekeepingNote: "Departure completed. Cleaning required.",
-      lastCleanedBy: "",
-    };
+    setBusy(true);
 
-    setRooms((prev) =>
-      prev.map((item) => (item.id === selectedRoom.id ? checkedOutRoom : item))
-    );
-    setSelectedRoomId(checkedOutRoom.id);
-    setForm(createEmptyRoomForm(checkedOutRoom));
-    setFormMode("allocate");
+    try {
+      await readJson(`/api/folios/payments`, {
+        method: "POST",
+        body: JSON.stringify({
+          stayId: selectedStayId,
+          roomId: selectedRoomDbId,
+          amount,
+          paymentMethod: folioPaymentForm.method,
+          referenceNo: null,
+          note: "Front Office payment entry",
+          createdByUserId: null,
+        }),
+      });
 
-    fireAndForget(`/api/rooms/${checkedOutRoom.id}`, checkedOutRoom, "PUT");
-    fireAndForget("/api/housekeeping", {
-      roomId: checkedOutRoom.id,
-      roomNo: checkedOutRoom.roomNo,
-      roomType: checkedOutRoom.roomType,
-      floor: checkedOutRoom.floor,
-      status: "Dirty",
-      assignedTo: "",
-      cleanedBy: "",
-      note: "Generated from front office checkout. Cleaning required.",
-      createdAt: new Date().toISOString(),
-      completedAt: "",
-    }, "POST");
+      setFolioPaymentForm({ amount: "", method: "Cash" });
+      showMessage(`Payment saved for Room ${selectedRoom.roomNo}.`, "success");
+      await refreshRoomContext(selectedRoomDbId);
+    } catch (error) {
+      console.error("Failed to apply payment", error);
+      showMessage(error instanceof Error ? error.message : "Failed to apply payment.", "warning");
+    } finally {
+      setBusy(false);
+    }
+  }
 
-    showMessage(
-      `Checkout completed for Room ${checkedOutRoom.roomNo}. Room status changed to Dirty and housekeeping task was created.`,
-      "success"
-    );
+  async function handleCheckout() {
+    if (!selectedStayId || !selectedRoomDbId || !selectedRoom) {
+      showMessage("No checked-in stay is selected for checkout.", "warning");
+      return;
+    }
+
+    setBusy(true);
+
+    try {
+      await readJson(`/api/stays/${selectedStayId}/checkout`, {
+        method: "POST",
+        body: JSON.stringify({
+          completedByUserId: null,
+          note: "Checkout completed from Front Office screen.",
+        }),
+      });
+
+      showMessage(
+        `Checkout completed for Room ${selectedRoom.roomNo}. Housekeeping task generated.`,
+        "success"
+      );
+
+      await refreshRoomContext(selectedRoomDbId);
+      setWorkTab("stay");
+    } catch (error) {
+      console.error("Failed to complete checkout", error);
+      showMessage(error instanceof Error ? error.message : "Failed to complete checkout.", "warning");
+    } finally {
+      setBusy(false);
+    }
   }
 
   const summaryCards = [
-    {
-      label: "Vacant Ready",
-      value: String(vacantReadyCount),
-      helper: "Available for immediate allocation",
-      icon: Hotel,
-    },
-    {
-      label: "Reserved",
-      value: String(reservedCount),
-      helper: "Expected arrivals waiting for check-in",
-      icon: CalendarClock,
-    },
-    {
-      label: "Occupied",
-      value: String(occupiedCount),
-      helper: "Current in-house rooms",
-      icon: BedDouble,
-    },
-    {
-      label: "Dirty",
-      value: String(dirtyCount),
-      helper: "Ready for housekeeping turnover",
-      icon: Sparkles,
-    },
+    { label: "Vacant Ready", value: String(vacantReadyCount), helper: "Available for immediate allocation", icon: Hotel },
+    { label: "Reserved", value: String(reservedCount), helper: "Expected arrivals waiting for check-in", icon: CalendarClock },
+    { label: "Occupied", value: String(occupiedCount), helper: "Current in-house rooms", icon: BedDouble },
+    { label: "Dirty", value: String(dirtyCount), helper: "Ready for housekeeping turnover", icon: Sparkles },
   ];
 
   return (
     <AppShell
       title="Front Office / Room Utilization"
-      description="Sprint 5 front office flow adds checkout and dirty-room handover while keeping room card visibility and allocation behavior."
+      description="DB-bound Front Office screen with live room list, room detail, folio, stay update, payment, and checkout refresh."
     >
       {message ? (
         <div className={`mb-6 rounded-3xl border px-4 py-3 text-sm ${toneClasses(message.tone)}`}>
@@ -371,15 +583,12 @@ export default function FrontOfficePage() {
       <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {summaryCards.map((card) => {
           const Icon = card.icon;
-
           return (
             <Card key={card.label} className="rounded-[28px] border-white/60 bg-white/90 shadow-sm backdrop-blur">
               <CardContent className="flex items-start justify-between p-5">
                 <div>
                   <p className="text-sm text-slate-500">{card.label}</p>
-                  <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
-                    {card.value}
-                  </p>
+                  <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{card.value}</p>
                   <p className="mt-1 text-xs text-slate-500">{card.helper}</p>
                 </div>
                 <div className="rounded-2xl bg-slate-100 p-3 text-slate-700">
@@ -391,50 +600,141 @@ export default function FrontOfficePage() {
         })}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.05fr_1fr_1fr]">
-        <RoomList
-          rooms={filteredRooms}
-          activeRoomId={selectedRoom?.id ?? null}
-          search={search}
-          onSearchChange={setSearch}
-          activeFilter={activeFilter}
-          onFilterChange={setActiveFilter}
-          onSelectRoom={(roomId) => {
-            setSelectedRoomId(roomId);
-            const nextRoom = rooms.find((item) => item.id === roomId) ?? null;
-            setForm(createEmptyRoomForm(nextRoom));
-            setFormMode(nextRoom?.status === "Occupied" ? "update" : "allocate");
-          }}
-        />
-
-        <RoomSummaryCard
-          room={selectedRoom}
-          currency={currency}
-          onPrepareAllocation={startPrepareAllocation}
-        />
-
-        <div className="space-y-6">
-          <RoomAllocationForm
-            selectedRoomNo={selectedRoom?.roomNo ?? ""}
-            selectedRoomType={selectedRoom?.roomType ?? ""}
-            mode={formMode}
-            form={form}
-            onChange={updateForm}
-            onSubmit={handleSubmit}
-            onReset={resetForm}
+      <div className="grid min-h-[calc(100vh-18rem)] gap-6 xl:grid-cols-[1.15fr_1.35fr]">
+        <div className="min-h-0">
+          <RoomList
+            rooms={filteredRooms}
+            activeRoomId={selectedRoomDbId ? String(selectedRoomDbId) : null}
+            search={search}
+            onSearchChange={setSearch}
+            activeFilter={activeFilter}
+            onFilterChange={setActiveFilter}
+            onSelectRoom={(roomId) => {
+              const parsed = Number(roomId);
+              setSelectedRoomDbId(Number.isFinite(parsed) ? parsed : null);
+            }}
           />
+        </div>
 
-          <CheckoutPanel
-            room={selectedRoom}
-            currency={currency}
-            onCheckout={handleCheckout}
-          />
+        <div className="min-h-0 space-y-6 overflow-y-auto pr-1">
+          <Card className="rounded-[28px] border-white/60 bg-white/90 shadow-sm backdrop-blur">
+            <CardContent className="p-5">
+              {selectedRoom ? (
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <RoomStatusBadge status={selectedRoom.status} />
+                        <span className="text-xs text-slate-500">DB Room {selectedRoom.id}</span>
+                      </div>
+                      <p className="mt-3 text-xl font-semibold text-slate-900">Room {selectedRoom.roomNo}</p>
+                      <p className="text-sm text-slate-500">{selectedRoom.roomType} • {selectedRoom.floor}</p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {(["stay", "folio", "checkout"] as WorkTab[]).map((tab) => (
+                        <button
+                          key={tab}
+                          className={`rounded-2xl px-4 py-2 text-sm font-medium ${
+                            workTab === tab
+                              ? "bg-slate-900 text-white"
+                              : "border border-slate-200 bg-white text-slate-900"
+                          }`}
+                          onClick={() => setWorkTab(tab)}
+                          type="button"
+                        >
+                          {tab === "stay" ? "Stay" : tab === "folio" ? "Folio" : "Checkout"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-2xl bg-slate-50 p-4">
+                      <p className="text-xs text-slate-500">Guest</p>
+                      <p className="mt-2 text-sm font-medium text-slate-900">{selectedRoom.guestName || "Vacant"}</p>
+                      <p className="mt-1 text-xs text-slate-500">{selectedRoom.reservationId || "No reservation ref"}</p>
+                    </div>
+                    <div className="rounded-2xl bg-slate-50 p-4">
+                      <p className="text-xs text-slate-500">Stay Dates</p>
+                      <div className="mt-2 flex items-center gap-2 text-sm font-medium text-slate-900">
+                        <CalendarDays className="h-4 w-4 text-slate-500" />
+                        {selectedRoom.arrivalDate
+                          ? `${selectedRoom.arrivalDate} → ${selectedRoom.departureDate}`
+                          : "No active stay"}
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {selectedRoom.nights > 0 ? `${selectedRoom.nights} nights` : "No stay"}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl bg-slate-50 p-4">
+                      <p className="text-xs text-slate-500">Occupancy</p>
+                      <div className="mt-2 flex items-center gap-2 text-sm font-medium text-slate-900">
+                        <Users className="h-4 w-4 text-slate-500" />
+                        {selectedRoom.adults} adults / {selectedRoom.children} children
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">{selectedRoom.boardBasis}</p>
+                    </div>
+                    <div className="rounded-2xl bg-slate-50 p-4">
+                      <p className="text-xs text-slate-500">Contact / Rate</p>
+                      <div className="mt-2 flex items-center gap-2 text-sm font-medium text-slate-900">
+                        <Phone className="h-4 w-4 text-slate-500" />
+                        {selectedRoom.mobile || "No mobile"}
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">{currency(selectedRoom.rate)}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-3xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500">
+                  No room selected.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {workTab === "stay" ? (
+            <RoomAllocationForm
+              selectedRoomNo={selectedRoom?.roomNo ?? ""}
+              selectedRoomType={selectedRoom?.roomType ?? ""}
+              mode={formMode}
+              form={form}
+              onChange={updateForm}
+              onSubmit={handleStaySubmit}
+              onReset={resetForm}
+            />
+          ) : null}
+
+          {workTab === "folio" ? (
+            <RoomFolioPanel
+              room={selectedRoom}
+              entries={folioEntries}
+              currency={currency}
+              paymentForm={folioPaymentForm}
+              onPaymentFormChange={(field, value) =>
+                setFolioPaymentForm((prev) => ({ ...prev, [field]: value }))
+              }
+              onApplyPayment={handleApplyPayment}
+              onOpenCheckout={() => setWorkTab("checkout")}
+            />
+          ) : null}
+
+          {workTab === "checkout" ? (
+            <CheckoutPanel
+              room={selectedRoom}
+              currency={currency}
+              folioBalance={folioBalance}
+              folioEntryCount={folioEntryCount}
+              onCheckout={handleCheckout}
+              onOpenFolio={() => setWorkTab("folio")}
+            />
+          ) : null}
         </div>
       </div>
 
       <div className="mt-6 rounded-3xl border border-slate-200 bg-white/90 p-4 text-xs text-slate-500 shadow-sm">
-        API mode: <span className="font-medium text-slate-700">{apiMode}</span>. This sprint extends
-        front office with checkout and dirty-room turnover handoff to housekeeping.
+        API mode: <span className="font-medium text-slate-700">{apiMode}</span>.{" "}
+        {busy ? "Processing action..." : "Room, stay, folio, payment, and checkout now refresh from DB endpoints."}
       </div>
     </AppShell>
   );

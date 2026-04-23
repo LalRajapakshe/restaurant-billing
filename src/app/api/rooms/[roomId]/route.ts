@@ -1,76 +1,118 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { mockRooms } from "@/data/mock-rooms";
-import { RoomPayload } from "@/types/room";
+import { executeProcedure, sql } from "@/lib/db-exec";
 
 type RoomRouteContext = {
   params: Promise<{ roomId: string }>;
 };
 
-function calculateNights(arrivalDate: string, departureDate: string) {
-  const start = new Date(arrivalDate);
-  const end = new Date(departureDate);
-  const diff = end.getTime() - start.getTime();
-  const days = Math.round(diff / (1000 * 60 * 60 * 24));
-
-  return Number.isFinite(days) && days > 0 ? days : 0;
+function parseRoomId(value: string) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export async function GET(
   request: NextRequest,
   { params }: RoomRouteContext
 ) {
-  const { roomId } = await params;
-  const room = mockRooms.find((item) => item.id === roomId);
+  try {
+    const { roomId } = await params;
+    const parsedRoomId = parseRoomId(roomId);
 
-  if (!room) {
-    return NextResponse.json({ error: "Room not found" }, { status: 404 });
+    if (!parsedRoomId) {
+      return NextResponse.json(
+        { success: false, error: "Invalid room id." },
+        { status: 400 }
+      );
+    }
+
+    const result = await executeProcedure("hotel.sp_room_get", [
+      { name: "RoomId", type: sql.BigInt, value: parsedRoomId },
+    ]);
+
+    const room = result.recordset?.[0] ?? null;
+
+    if (!room) {
+      return NextResponse.json(
+        { success: false, error: "Room not found." },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: room,
+    });
+  } catch (error) {
+    console.error("GET /api/rooms/[roomId] failed", error);
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Failed to load room.",
+      },
+      { status: 500 }
+    );
   }
-
-  return NextResponse.json({
-    success: true,
-    data: room,
-  });
 }
 
 export async function PUT(
   request: NextRequest,
   { params }: RoomRouteContext
 ) {
-  const { roomId } = await params;
-  const current = mockRooms.find((item) => item.id === roomId);
-  const body = (await request.json().catch(() => ({}))) as RoomPayload;
+  try {
+    const { roomId } = await params;
+    const parsedRoomId = parseRoomId(roomId);
 
-  if (!current) {
-    return NextResponse.json({ error: "Room not found" }, { status: 404 });
+    if (!parsedRoomId) {
+      return NextResponse.json(
+        { success: false, error: "Invalid room id." },
+        { status: 400 }
+      );
+    }
+
+    const body = (await request.json()) as {
+      roomType: string;
+      floorName: string;
+      defaultRate: number;
+      currentStatus: string;
+      notes?: string | null;
+      housekeepingNote?: string | null;
+      updatedByUserId?: number | null;
+    };
+
+    const result = await executeProcedure("hotel.sp_room_update", [
+      { name: "RoomId", type: sql.BigInt, value: parsedRoomId },
+      { name: "RoomType", type: sql.NVarChar(100), value: body.roomType },
+      { name: "FloorName", type: sql.NVarChar(50), value: body.floorName },
+      { name: "DefaultRate", type: sql.Decimal(18, 2), value: body.defaultRate },
+      { name: "CurrentStatus", type: sql.NVarChar(30), value: body.currentStatus },
+      { name: "Notes", type: sql.NVarChar(500), value: body.notes ?? null },
+      {
+        name: "HousekeepingNote",
+        type: sql.NVarChar(500),
+        value: body.housekeepingNote ?? null,
+      },
+      {
+        name: "UpdatedByUserId",
+        type: sql.Numeric(18, 0),
+        value: body.updatedByUserId ?? null,
+      },
+    ]);
+
+    return NextResponse.json({
+      success: true,
+      data: result.recordset?.[0] ?? null,
+    });
+  } catch (error) {
+    console.error("PUT /api/rooms/[roomId] failed", error);
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Failed to update room.",
+      },
+      { status: 500 }
+    );
   }
-
-  const updated = {
-    ...current,
-    ...body,
-    id: roomId,
-    nights: calculateNights(
-      body.arrivalDate ?? current.arrivalDate,
-      body.departureDate ?? current.departureDate
-    ),
-  };
-
-  return NextResponse.json({
-    success: true,
-    message: "Mock room update accepted.",
-    data: updated,
-  });
-}
-
-export async function DELETE(
-  request: NextRequest,
-  { params }: RoomRouteContext
-) {
-  const { roomId } = await params;
-
-  return NextResponse.json({
-    success: true,
-    message: "Mock room delete accepted.",
-    data: { id: roomId },
-  });
 }

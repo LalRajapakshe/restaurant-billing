@@ -1,40 +1,133 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, ClipboardList, Hotel, Users } from "lucide-react";
+import {
+  BedDouble,
+  CalendarDays,
+  CalendarRange,
+  ClipboardList,
+  Hotel,
+  Search,
+  Users,
+} from "lucide-react";
 
 import AppShell from "@/components/layout/app-shell";
-import ReservationForm from "@/components/reservations/reservation-form";
-import ReservationList from "@/components/reservations/reservation-list";
-import ReservationSummaryCard from "@/components/reservations/reservation-summary-card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { mockReservations } from "@/data/mock-reservations";
-import {
-  ReservationPayload,
-  ReservationRecord,
-  ReservationStatus,
-} from "@/types/reservation";
+import { Input } from "@/components/ui/input";
 
-type ApiMode = "loading" | "connected" | "fallback";
+type ReservationStatus =
+  | "Tentative"
+  | "Confirmed"
+  | "Checked In"
+  | "Checked Out"
+  | "Cancelled"
+  | "No Show";
+
+type ApiEnvelope<T> = {
+  success: boolean;
+  data: T;
+  error?: string;
+};
+
+type ReservationRow = {
+  reservationId: number;
+  reservationNo: string;
+  guestName: string;
+  mobileNo?: string | null;
+  email?: string | null;
+  arrivalDate: string;
+  departureDate: string;
+  nights: number;
+  roomType: string;
+  reservedRoomId?: number | null;
+  reservedRoomNo?: string | null;
+  adults: number;
+  children: number;
+  boardBasisId: number;
+  boardBasisName: string;
+  advancePayment: number;
+  totalEstimate: number;
+  reservationStatus: ReservationStatus;
+  note?: string | null;
+  createdAt: string;
+};
+
+type RoomRow = {
+  roomId: number;
+  roomNo: string;
+  roomType: string;
+  floorName: string;
+  defaultRate: number;
+  currentStatus: string;
+};
+
+type BoardBasisRow = {
+  boardBasisId: number;
+  boardBasisCode: string;
+  boardBasisName: string;
+  sortOrder: number;
+  isActive: boolean;
+};
+
+type ReservationFormState = {
+  reservationId?: number;
+  reservationNo: string;
+  guestName: string;
+  mobileNo: string;
+  email: string;
+  arrivalDate: string;
+  departureDate: string;
+  roomType: string;
+  reservedRoomId: string;
+  adults: string;
+  children: string;
+  boardBasisId: string;
+  advancePayment: string;
+  totalEstimate: string;
+  reservationStatus: ReservationStatus;
+  note: string;
+};
+
 type MessageTone = "success" | "warning" | "info";
 
-function currency(value: number) {
-  return `LKR ${value.toLocaleString()}`;
-}
-
-function calculateNights(arrivalDate?: string, departureDate?: string) {
-  if (!arrivalDate || !departureDate) return 0;
-
-  const start = new Date(arrivalDate);
-  const end = new Date(departureDate);
-  const diff = end.getTime() - start.getTime();
-  const days = Math.round(diff / (1000 * 60 * 60 * 24));
-
-  return Number.isFinite(days) && days > 0 ? days : 0;
-}
+const STATUS_FILTERS: Array<ReservationStatus | "All"> = [
+  "All",
+  "Tentative",
+  "Confirmed",
+  "Checked In",
+  "Checked Out",
+  "Cancelled",
+  "No Show",
+];
 
 function todayIsoDate() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function tomorrowIsoDate() {
+  return new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+}
+
+function emptyForm(): ReservationFormState {
+  return {
+    reservationNo: "",
+    guestName: "",
+    mobileNo: "",
+    email: "",
+    arrivalDate: todayIsoDate(),
+    departureDate: tomorrowIsoDate(),
+    roomType: "",
+    reservedRoomId: "",
+    adults: "2",
+    children: "0",
+    boardBasisId: "1",
+    advancePayment: "0",
+    totalEstimate: "0",
+    reservationStatus: "Confirmed",
+    note: "",
+  };
 }
 
 function toneClasses(tone: MessageTone) {
@@ -43,276 +136,338 @@ function toneClasses(tone: MessageTone) {
   return "border-sky-200 bg-sky-50 text-sky-800";
 }
 
-function createEmptyReservationForm(): ReservationPayload {
-  const today = todayIsoDate();
-  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-
-  return {
-    guestName: "",
-    mobile: "",
-    email: "",
-    arrivalDate: today,
-    departureDate: tomorrow,
-    roomType: "Deluxe Double",
-    roomNo: "",
-    adults: 2,
-    children: 0,
-    boardBasis: "Room Only",
-    advancePayment: 0,
-    totalEstimate: 0,
-    status: "Tentative",
-    notes: "",
-  };
+function currency(value: number) {
+  return `LKR ${value.toLocaleString()}`;
 }
 
-async function fireAndForget(url: string, payload: unknown, method: "POST" | "PUT") {
-  void fetch(url, {
-    method,
+function dateDiffNights(arrivalDate: string, departureDate: string) {
+  const arrival = new Date(arrivalDate);
+  const departure = new Date(departureDate);
+  const diff = departure.getTime() - arrival.getTime();
+  return Math.round(diff / 86400000);
+}
+
+function formatStatusTone(status: ReservationStatus) {
+  switch (status) {
+    case "Confirmed":
+      return "bg-sky-100 text-sky-700";
+    case "Checked In":
+      return "bg-emerald-100 text-emerald-700";
+    case "Checked Out":
+      return "bg-slate-200 text-slate-700";
+    case "Cancelled":
+    case "No Show":
+      return "bg-rose-100 text-rose-700";
+    default:
+      return "bg-amber-100 text-amber-700";
+  }
+}
+
+async function readJson<T>(input: RequestInfo | URL, init?: RequestInit) {
+  const response = await fetch(input, {
+    ...init,
+    cache: "no-store",
     headers: {
       "Content-Type": "application/json",
+      ...(init?.headers ?? {}),
     },
-    body: JSON.stringify(payload),
-  }).catch(() => undefined);
+  });
+
+  const json = (await response.json().catch(() => ({}))) as ApiEnvelope<T>;
+
+  if (!response.ok || !json.success) {
+    throw new Error(json.error || "Request failed.");
+  }
+
+  return json.data;
 }
 
 export default function ReservationsPage() {
-  const [reservations, setReservations] = useState<ReservationRecord[]>(mockReservations);
-  const [selectedReservationId, setSelectedReservationId] = useState<string>(mockReservations[0]?.id ?? "");
+  const [reservations, setReservations] = useState<ReservationRow[]>([]);
+  const [rooms, setRooms] = useState<RoomRow[]>([]);
+  const [boardBasis, setBoardBasis] = useState<BoardBasisRow[]>([]);
+  const [activeReservationId, setActiveReservationId] = useState<number | null>(null);
+  const [form, setForm] = useState<ReservationFormState>(emptyForm());
   const [search, setSearch] = useState("");
-  const [activeFilter, setActiveFilter] = useState<ReservationStatus | "All">("All");
-  const [apiMode, setApiMode] = useState<ApiMode>("loading");
-  const [formMode, setFormMode] = useState<"create" | "edit">("create");
-  const [form, setForm] = useState<ReservationPayload>(createEmptyReservationForm());
+  const [statusFilter, setStatusFilter] = useState<ReservationStatus | "All">("All");
+  const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: MessageTone; text: string } | null>({
     tone: "info",
-    text: "Connecting to mock reservation API routes for initial data load...",
+    text: "Reservations are now using live DB-backed room, board basis, create, update, and check-in flows.",
   });
 
-  useEffect(() => {
-    let isMounted = true
+  const availableRooms = useMemo(() => {
+    return rooms.filter((room) =>
+      room.currentStatus === "Vacant Ready" ||
+      room.currentStatus === "Reserved" ||
+      String(room.roomId) === form.reservedRoomId
+    );
+  }, [rooms, form.reservedRoomId]);
 
-    async function loadReservations() {
-      try {
-        const response = await fetch("/api/reservations", { cache: "no-store" });
-
-        if (!response.ok) {
-          throw new Error("Reservation API failed");
-        }
-
-        const json = await response.json();
-        const nextReservations = Array.isArray(json?.data)
-          ? (json.data as ReservationRecord[])
-          : mockReservations;
-
-        if (!isMounted) return;
-
-        setReservations(nextReservations);
-        setSelectedReservationId(nextReservations[0]?.id ?? "");
-        setApiMode("connected");
-        setMessage({
-          tone: "info",
-          text: "Reservations loaded from mock API. Save/update actions continue in demo mode.",
-        });
-      } catch {
-        if (!isMounted) return;
-
-        setReservations(mockReservations);
-        setSelectedReservationId(mockReservations[0]?.id ?? "");
-        setApiMode("fallback");
-        setMessage({
-          tone: "warning",
-          text: "Using local fallback reservation data. The demo remains fully usable.",
-        });
-      }
-    }
-
-    loadReservations();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  const selectedReservation =
-    reservations.find((item) => item.id === selectedReservationId) ?? null;
+  const selectedRoom = useMemo(() => {
+    return rooms.find((room) => String(room.roomId) === form.reservedRoomId) ?? null;
+  }, [rooms, form.reservedRoomId]);
 
   const filteredReservations = useMemo(() => {
-    return reservations.filter((item) => {
-      const matchesFilter = activeFilter === "All" ? true : item.status === activeFilter;
+    return reservations.filter((reservation) => {
+      const filterOk = statusFilter === "All" ? true : reservation.reservationStatus === statusFilter;
       const q = search.trim().toLowerCase();
 
-      const matchesSearch =
+      const searchOk =
         !q ||
-        item.id.toLowerCase().includes(q) ||
-        item.guestName.toLowerCase().includes(q) ||
-        item.mobile.toLowerCase().includes(q) ||
-        item.roomType.toLowerCase().includes(q) ||
-        item.boardBasis.toLowerCase().includes(q);
+        reservation.reservationNo.toLowerCase().includes(q) ||
+        reservation.guestName.toLowerCase().includes(q) ||
+        (reservation.mobileNo ?? "").toLowerCase().includes(q) ||
+        (reservation.reservedRoomNo ?? "").toLowerCase().includes(q);
 
-      return matchesFilter && matchesSearch;
+      return filterOk && searchOk;
     });
-  }, [reservations, activeFilter, search]);
+  }, [reservations, search, statusFilter]);
 
-  const tentativeCount = reservations.filter((item) => item.status === "Tentative").length;
-  const confirmedCount = reservations.filter((item) => item.status === "Confirmed").length;
-  const inHouseCount = reservations.filter((item) => item.status === "Checked In").length;
-  const arrivalsCount = reservations.filter((item) => item.arrivalDate === todayIsoDate()).length;
+  const activeReservation = useMemo(() => {
+    return reservations.find((row) => row.reservationId === activeReservationId) ?? null;
+  }, [reservations, activeReservationId]);
+
+  const summary = useMemo(() => {
+    return {
+      tentative: reservations.filter((row) => row.reservationStatus === "Tentative").length,
+      confirmed: reservations.filter((row) => row.reservationStatus === "Confirmed").length,
+      checkedIn: reservations.filter((row) => row.reservationStatus === "Checked In").length,
+      cancelled: reservations.filter((row) =>
+        row.reservationStatus === "Cancelled" || row.reservationStatus === "No Show"
+      ).length,
+    };
+  }, [reservations]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [reservationData, roomData, boardBasisData] = await Promise.all([
+          readJson<ReservationRow[]>("/api/reservations"),
+          readJson<RoomRow[]>("/api/rooms"),
+          readJson<BoardBasisRow[]>("/api/board-basis"),
+        ]);
+
+        setReservations(reservationData);
+        setRooms(roomData);
+        setBoardBasis(boardBasisData);
+
+        if (reservationData.length > 0) {
+          setActiveReservationId(reservationData[0].reservationId);
+        } else if (boardBasisData[0]) {
+          setForm((prev) => ({
+            ...prev,
+            boardBasisId: String(boardBasisData[0].boardBasisId),
+          }));
+        }
+      } catch (error) {
+        console.error("Failed to load reservations page", error);
+        setMessage({
+          tone: "warning",
+          text: error instanceof Error ? error.message : "Failed to load reservation data.",
+        });
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!activeReservation) {
+      if (boardBasis[0] && !form.reservationId) {
+        setForm((prev) => ({
+          ...prev,
+          boardBasisId: prev.boardBasisId || String(boardBasis[0].boardBasisId),
+        }));
+      }
+      return;
+    }
+
+    setForm({
+      reservationId: activeReservation.reservationId,
+      reservationNo: activeReservation.reservationNo,
+      guestName: activeReservation.guestName,
+      mobileNo: activeReservation.mobileNo ?? "",
+      email: activeReservation.email ?? "",
+      arrivalDate: activeReservation.arrivalDate,
+      departureDate: activeReservation.departureDate,
+      roomType: activeReservation.roomType,
+      reservedRoomId: activeReservation.reservedRoomId ? String(activeReservation.reservedRoomId) : "",
+      adults: String(activeReservation.adults),
+      children: String(activeReservation.children),
+      boardBasisId: String(activeReservation.boardBasisId),
+      advancePayment: String(activeReservation.advancePayment ?? 0),
+      totalEstimate: String(activeReservation.totalEstimate ?? 0),
+      reservationStatus: activeReservation.reservationStatus,
+      note: activeReservation.note ?? "",
+    });
+  }, [activeReservation, boardBasis]);
+
+  useEffect(() => {
+    const nights = dateDiffNights(form.arrivalDate, form.departureDate);
+
+    if (selectedRoom && Number.isFinite(nights) && nights > 0) {
+      const expected = selectedRoom.defaultRate * nights;
+      setForm((prev) => {
+        const currentTotal = Number(prev.totalEstimate || 0);
+        if (!currentTotal || currentTotal === 0) {
+          return {
+            ...prev,
+            roomType: selectedRoom.roomType,
+            totalEstimate: String(expected),
+          };
+        }
+        return {
+          ...prev,
+          roomType: selectedRoom.roomType,
+        };
+      });
+    }
+  }, [selectedRoom, form.arrivalDate, form.departureDate]);
 
   function showMessage(text: string, tone: MessageTone = "success") {
     setMessage({ text, tone });
   }
 
+  async function refreshReservations(preferredReservationId?: number | null) {
+    const [reservationData, roomData] = await Promise.all([
+      readJson<ReservationRow[]>("/api/reservations"),
+      readJson<RoomRow[]>("/api/rooms"),
+    ]);
+
+    setReservations(reservationData);
+    setRooms(roomData);
+
+    const nextReservationId =
+      preferredReservationId ??
+      activeReservationId ??
+      reservationData[0]?.reservationId ??
+      null;
+
+    setActiveReservationId(nextReservationId);
+  }
+
   function startNewReservation() {
-    setFormMode("create");
-    setForm(createEmptyReservationForm());
-  }
-
-  function startEditReservation() {
-    if (!selectedReservation) return;
-
-    setFormMode("edit");
+    setActiveReservationId(null);
     setForm({
-      id: selectedReservation.id,
-      guestName: selectedReservation.guestName,
-      mobile: selectedReservation.mobile,
-      email: selectedReservation.email,
-      arrivalDate: selectedReservation.arrivalDate,
-      departureDate: selectedReservation.departureDate,
-      roomType: selectedReservation.roomType,
-      roomNo: selectedReservation.roomNo,
-      adults: selectedReservation.adults,
-      children: selectedReservation.children,
-      boardBasis: selectedReservation.boardBasis,
-      advancePayment: selectedReservation.advancePayment,
-      totalEstimate: selectedReservation.totalEstimate,
-      status: selectedReservation.status,
-      notes: selectedReservation.notes,
-      createdAt: selectedReservation.createdAt,
+      ...emptyForm(),
+      boardBasisId: boardBasis[0] ? String(boardBasis[0].boardBasisId) : "1",
     });
+    showMessage("New reservation form is ready.", "info");
   }
 
-  function resetForm() {
-    if (formMode === "edit" && selectedReservation) {
-      startEditReservation();
+  function updateForm<K extends keyof ReservationFormState>(
+    key: K,
+    value: ReservationFormState[K]
+  ) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function handleSaveReservation(e: React.FormEvent) {
+    e.preventDefault();
+
+    const nights = dateDiffNights(form.arrivalDate, form.departureDate);
+    if (!Number.isFinite(nights) || nights <= 0) {
+      showMessage("Departure date must be after arrival date.", "warning");
       return;
     }
 
-    startNewReservation();
-  }
-
-  function updateForm<K extends keyof ReservationPayload>(
-    field: K,
-    value: ReservationPayload[K]
-  ) {
-    setForm((prev) => ({ ...prev, [field]: value }));
-  }
-
-  function validateForm() {
-    if (!form.guestName?.trim()) {
+    if (!form.guestName.trim()) {
       showMessage("Guest name is required.", "warning");
-      return false;
+      return;
     }
 
-    if (!form.mobile?.trim()) {
-      showMessage("Mobile number is required.", "warning");
-      return false;
+    if (!form.boardBasisId) {
+      showMessage("Select a board basis.", "warning");
+      return;
     }
 
-    if (!form.arrivalDate || !form.departureDate) {
-      showMessage("Arrival and departure dates are required.", "warning");
-      return false;
-    }
+    setBusy(true);
 
-    const nights = calculateNights(form.arrivalDate, form.departureDate);
+    try {
+      const payload = {
+        guestName: form.guestName.trim(),
+        mobileNo: form.mobileNo.trim() || null,
+        email: form.email.trim() || null,
+        arrivalDate: form.arrivalDate,
+        departureDate: form.departureDate,
+        roomType: form.roomType || selectedRoom?.roomType || "Standard",
+        reservedRoomId: form.reservedRoomId ? Number(form.reservedRoomId) : null,
+        adults: Number(form.adults || 1),
+        children: Number(form.children || 0),
+        boardBasisId: Number(form.boardBasisId),
+        advancePayment: Number(form.advancePayment || 0),
+        totalEstimate: Number(form.totalEstimate || 0),
+        reservationStatus: form.reservationStatus,
+        note: form.note || null,
+      };
 
-    if (nights <= 0) {
-      showMessage("Departure date must be after arrival date.", "warning");
-      return false;
-    }
+      const saved = form.reservationId
+        ? await readJson<ReservationRow>(`/api/reservations/${form.reservationId}`, {
+            method: "PUT",
+            body: JSON.stringify(payload),
+          })
+        : await readJson<ReservationRow>("/api/reservations", {
+            method: "POST",
+            body: JSON.stringify(payload),
+          });
 
-    return true;
-  }
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-
-    if (!validateForm()) return;
-
-    const nights = calculateNights(form.arrivalDate, form.departureDate);
-    const normalized: ReservationRecord = {
-      id:
-        formMode === "edit" && form.id
-          ? form.id
-          : `RES-${10020 + reservations.length + 1}`,
-      guestName: form.guestName?.trim() ?? "",
-      mobile: form.mobile?.trim() ?? "",
-      email: form.email?.trim() ?? "",
-      arrivalDate: form.arrivalDate ?? "",
-      departureDate: form.departureDate ?? "",
-      nights,
-      roomType: form.roomType?.trim() ?? "",
-      roomNo: form.roomNo?.trim() ?? "",
-      adults: Number(form.adults ?? 1),
-      children: Number(form.children ?? 0),
-      boardBasis: form.boardBasis ?? "Room Only",
-      advancePayment: Number(form.advancePayment ?? 0),
-      totalEstimate: Number(form.totalEstimate ?? 0),
-      status: form.status ?? "Tentative",
-      notes: form.notes?.trim() ?? "",
-      createdAt: form.createdAt ?? new Date().toISOString(),
-    };
-
-    if (formMode === "edit" && form.id) {
-      setReservations((prev) =>
-        prev.map((item) => (item.id === form.id ? normalized : item))
+      await refreshReservations(saved.reservationId);
+      showMessage(
+        form.reservationId
+          ? `Reservation ${saved.reservationNo} updated.`
+          : `Reservation ${saved.reservationNo} created.`,
+        "success"
       );
-      setSelectedReservationId(normalized.id);
-      fireAndForget(`/api/reservations/${normalized.id}`, normalized, "PUT");
-      showMessage(`Reservation ${normalized.id} updated successfully.`, "success");
-    } else {
-      setReservations((prev) => [normalized, ...prev]);
-      setSelectedReservationId(normalized.id);
-      fireAndForget("/api/reservations", normalized, "POST");
-      showMessage(`Reservation ${normalized.id} created successfully.`, "success");
+    } catch (error) {
+      console.error("Failed to save reservation", error);
+      showMessage(
+        error instanceof Error ? error.message : "Failed to save reservation.",
+        "warning"
+      );
+    } finally {
+      setBusy(false);
     }
-
-    setFormMode("edit");
-    setForm({
-      ...normalized,
-    });
   }
 
-  const summaryCards = [
-    {
-      label: "Arrivals Today",
-      value: String(arrivalsCount),
-      helper: "Expected arrivals based on reservation date",
-      icon: CalendarClock,
-    },
-    {
-      label: "Tentative",
-      value: String(tentativeCount),
-      helper: "Pending confirmation or follow-up",
-      icon: ClipboardList,
-    },
-    {
-      label: "Confirmed",
-      value: String(confirmedCount),
-      helper: "Approved bookings ready for allocation planning",
-      icon: Hotel,
-    },
-    {
-      label: "Checked In",
-      value: String(inHouseCount),
-      helper: "Already moved into in-house stay flow",
-      icon: Users,
-    },
-  ];
+  async function handleCheckIn() {
+    if (!form.reservationId) {
+      showMessage("Save the reservation before check-in.", "warning");
+      return;
+    }
+
+    if (!form.reservedRoomId) {
+      showMessage("Assign a room before check-in.", "warning");
+      return;
+    }
+
+    setBusy(true);
+
+    try {
+      await readJson(`/api/reservations/${form.reservationId}/check-in`, {
+        method: "POST",
+      });
+
+      await refreshReservations(form.reservationId);
+      showMessage(
+        `Reservation ${form.reservationNo || form.reservationId} checked in successfully.`,
+        "success"
+      );
+    } catch (error) {
+      console.error("Failed to check in reservation", error);
+      showMessage(
+        error instanceof Error ? error.message : "Failed to check in reservation.",
+        "warning"
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const nights = dateDiffNights(form.arrivalDate, form.departureDate);
 
   return (
     <AppShell
       title="Reservations"
-      description="Sprint 2 reservation module using DB-ready mock contracts, shared operational panels, and hotel stay fields."
+      description="DB-bound reservation creation, update, room assignment, and check-in handoff."
     >
       {message ? (
         <div className={`mb-6 rounded-3xl border px-4 py-3 text-sm ${toneClasses(message.tone)}`}>
@@ -321,9 +476,33 @@ export default function ReservationsPage() {
       ) : null}
 
       <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {summaryCards.map((card) => {
+        {[
+          {
+            label: "Tentative",
+            value: String(summary.tentative),
+            helper: "Pending conversion or confirmation",
+            icon: ClipboardList,
+          },
+          {
+            label: "Confirmed",
+            value: String(summary.confirmed),
+            helper: "Ready for arrival planning",
+            icon: CalendarRange,
+          },
+          {
+            label: "Checked In",
+            value: String(summary.checkedIn),
+            helper: "Already handed into Front Office",
+            icon: Hotel,
+          },
+          {
+            label: "Cancelled / No Show",
+            value: String(summary.cancelled),
+            helper: "Closed booking requests",
+            icon: BedDouble,
+          },
+        ].map((card) => {
           const Icon = card.icon;
-
           return (
             <Card key={card.label} className="rounded-[28px] border-white/60 bg-white/90 shadow-sm backdrop-blur">
               <CardContent className="flex items-start justify-between p-5">
@@ -343,36 +522,387 @@ export default function ReservationsPage() {
         })}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.05fr_1.2fr_0.95fr]">
-        <ReservationList
-          reservations={filteredReservations}
-          activeReservationId={selectedReservation?.id ?? null}
-          search={search}
-          onSearchChange={setSearch}
-          activeFilter={activeFilter}
-          onFilterChange={setActiveFilter}
-          onSelectReservation={setSelectedReservationId}
-        />
+      <div className="grid gap-6 xl:grid-cols-[1.05fr_1.3fr]">
+        <Card className="rounded-[28px] border-white/60 bg-white/90 shadow-sm backdrop-blur">
+          <CardContent className="p-5">
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <div className="relative min-w-[260px] flex-1">
+                <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search by reservation no, guest, mobile, room"
+                  className="h-11 rounded-2xl border-slate-200 bg-white pl-9"
+                />
+              </div>
 
-        <ReservationSummaryCard
-          reservation={selectedReservation}
-          currency={currency}
-          onNewReservation={startNewReservation}
-          onEditReservation={startEditReservation}
-        />
+              <Button
+                onClick={startNewReservation}
+                className="h-11 rounded-2xl bg-slate-900 text-white hover:bg-slate-800"
+              >
+                New Reservation
+              </Button>
+            </div>
 
-        <ReservationForm
-          mode={formMode}
-          form={form}
-          onChange={updateForm}
-          onSubmit={handleSubmit}
-          onReset={resetForm}
-        />
-      </div>
+            <div className="mb-4 flex flex-wrap gap-2">
+              {STATUS_FILTERS.map((filter) => (
+                <button
+                  key={filter}
+                  type="button"
+                  onClick={() => setStatusFilter(filter)}
+                  className={`rounded-2xl border px-4 py-2 text-sm ${
+                    statusFilter === filter
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-slate-200 bg-white text-slate-700"
+                  }`}
+                >
+                  {filter}
+                </button>
+              ))}
+            </div>
 
-      <div className="mt-6 rounded-3xl border border-slate-200 bg-white/90 p-4 text-xs text-slate-500 shadow-sm">
-        API mode: <span className="font-medium text-slate-700">{apiMode}</span>. This sprint keeps the
-        reservation UI and contracts DB-ready while still using mock API responses and local demo updates.
+            <div className="max-h-[calc(100vh-24rem)] space-y-3 overflow-y-auto pr-1">
+              {filteredReservations.map((reservation) => {
+                const isActive = reservation.reservationId === activeReservationId;
+                return (
+                  <button
+                    key={reservation.reservationId}
+                    type="button"
+                    onClick={() => setActiveReservationId(reservation.reservationId)}
+                    className={`w-full rounded-[24px] border p-4 text-left transition ${
+                      isActive
+                        ? "border-slate-900 bg-slate-900 text-white"
+                        : "border-slate-200 bg-white text-slate-900 hover:border-slate-300"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-base font-semibold">{reservation.reservationNo}</p>
+                        <p className={`mt-1 text-sm ${isActive ? "text-slate-300" : "text-slate-500"}`}>
+                          {reservation.guestName}
+                        </p>
+                      </div>
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-medium ${
+                          isActive ? "bg-white/10 text-white" : formatStatusTone(reservation.reservationStatus)
+                        }`}
+                      >
+                        {reservation.reservationStatus}
+                      </span>
+                    </div>
+
+                    <div className={`mt-4 grid gap-3 sm:grid-cols-2 ${isActive ? "text-slate-200" : "text-slate-600"}`}>
+                      <div>
+                        <p className="text-xs uppercase tracking-wide opacity-70">Stay</p>
+                        <p className="mt-1 text-sm">
+                          {reservation.arrivalDate} → {reservation.departureDate}
+                        </p>
+                        <p className="text-xs opacity-70">{reservation.nights} nights</p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wide opacity-70">Room / Board</p>
+                        <p className="mt-1 text-sm">
+                          {reservation.reservedRoomNo ? `Room ${reservation.reservedRoomNo}` : "Not assigned"}
+                        </p>
+                        <p className="text-xs opacity-70">{reservation.boardBasisName}</p>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+
+              {filteredReservations.length === 0 ? (
+                <div className="rounded-3xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500">
+                  No reservations found for the selected filter.
+                </div>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="space-y-6">
+          <Card className="rounded-[28px] border-white/60 bg-white/90 shadow-sm backdrop-blur">
+            <CardContent className="p-5">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p className="text-xl font-semibold text-slate-900">
+                    {form.reservationId ? form.reservationNo : "New Reservation"}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    DB-bound reservation form with room assignment and live check-in handoff.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Badge className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700 hover:bg-slate-100">
+                    {form.reservationStatus}
+                  </Badge>
+                  {selectedRoom ? (
+                    <Badge className="rounded-full bg-sky-100 px-3 py-1.5 text-sky-700 hover:bg-sky-100">
+                      Room {selectedRoom.roomNo}
+                    </Badge>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <p className="text-xs text-slate-500">Dates</p>
+                  <div className="mt-2 flex items-center gap-2 text-sm font-medium text-slate-900">
+                    <CalendarDays className="h-4 w-4 text-slate-500" />
+                    {form.arrivalDate} → {form.departureDate}
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {Number.isFinite(nights) && nights > 0 ? `${nights} nights` : "Select valid dates"}
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <p className="text-xs text-slate-500">Guests</p>
+                  <div className="mt-2 flex items-center gap-2 text-sm font-medium text-slate-900">
+                    <Users className="h-4 w-4 text-slate-500" />
+                    {form.adults} adults / {form.children} children
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">{form.guestName || "Guest name pending"}</p>
+                </div>
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <p className="text-xs text-slate-500">Board Basis</p>
+                  <p className="mt-2 text-sm font-medium text-slate-900">
+                    {boardBasis.find((row) => String(row.boardBasisId) === form.boardBasisId)?.boardBasisName ?? "Select"}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">Hotel board-basis master</p>
+                </div>
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <p className="text-xs text-slate-500">Estimate</p>
+                  <p className="mt-2 text-sm font-medium text-slate-900">{currency(Number(form.totalEstimate || 0))}</p>
+                  <p className="mt-1 text-xs text-slate-500">Advance {currency(Number(form.advancePayment || 0))}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-[28px] border-white/60 bg-white/90 shadow-sm backdrop-blur">
+            <CardContent className="p-5">
+              <form className="space-y-5" onSubmit={handleSaveReservation}>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Guest Name</label>
+                    <Input
+                      value={form.guestName}
+                      onChange={(e) => updateForm("guestName", e.target.value)}
+                      className="h-11 rounded-2xl"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Mobile No</label>
+                    <Input
+                      value={form.mobileNo}
+                      onChange={(e) => updateForm("mobileNo", e.target.value)}
+                      className="h-11 rounded-2xl"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Email</label>
+                    <Input
+                      value={form.email}
+                      onChange={(e) => updateForm("email", e.target.value)}
+                      className="h-11 rounded-2xl"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Reservation Status</label>
+                    <select
+                      value={form.reservationStatus}
+                      onChange={(e) => updateForm("reservationStatus", e.target.value as ReservationStatus)}
+                      className="flex h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                    >
+                      {STATUS_FILTERS.filter((item) => item !== "All").map((status) => (
+                        <option key={status} value={status}>{status}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Arrival Date</label>
+                    <Input
+                      type="date"
+                      value={form.arrivalDate}
+                      onChange={(e) => updateForm("arrivalDate", e.target.value)}
+                      className="h-11 rounded-2xl"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Departure Date</label>
+                    <Input
+                      type="date"
+                      value={form.departureDate}
+                      onChange={(e) => updateForm("departureDate", e.target.value)}
+                      className="h-11 rounded-2xl"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Adults</label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={form.adults}
+                      onChange={(e) => updateForm("adults", e.target.value)}
+                      className="h-11 rounded-2xl"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Children</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={form.children}
+                      onChange={(e) => updateForm("children", e.target.value)}
+                      className="h-11 rounded-2xl"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Assigned Room</label>
+                    <select
+                      value={form.reservedRoomId}
+                      onChange={(e) => updateForm("reservedRoomId", e.target.value)}
+                      className="flex h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                    >
+                      <option value="">Select room</option>
+                      {availableRooms.map((room) => (
+                        <option key={room.roomId} value={String(room.roomId)}>
+                          Room {room.roomNo} • {room.roomType} • {room.currentStatus}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Room Type</label>
+                    <Input
+                      value={form.roomType}
+                      onChange={(e) => updateForm("roomType", e.target.value)}
+                      className="h-11 rounded-2xl"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Board Basis</label>
+                    <select
+                      value={form.boardBasisId}
+                      onChange={(e) => updateForm("boardBasisId", e.target.value)}
+                      className="flex h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                    >
+                      {boardBasis.map((row) => (
+                        <option key={row.boardBasisId} value={String(row.boardBasisId)}>
+                          {row.boardBasisName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Nights</label>
+                    <Input
+                      value={Number.isFinite(nights) && nights > 0 ? String(nights) : "0"}
+                      readOnly
+                      className="h-11 rounded-2xl bg-slate-50"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Advance Payment</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={form.advancePayment}
+                      onChange={(e) => updateForm("advancePayment", e.target.value)}
+                      className="h-11 rounded-2xl"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Total Estimate</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={form.totalEstimate}
+                      onChange={(e) => updateForm("totalEstimate", e.target.value)}
+                      className="h-11 rounded-2xl"
+                    />
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                    {selectedRoom ? (
+                      <>
+                        <p className="font-medium text-slate-900">Selected Room {selectedRoom.roomNo}</p>
+                        <p className="mt-1">{selectedRoom.roomType}</p>
+                        <p className="text-xs text-slate-500">
+                          Default rate {currency(Number(selectedRoom.defaultRate ?? 0))}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="font-medium text-slate-900">No Room Selected</p>
+                        <p className="mt-1 text-xs text-slate-500">Assign a room to prepare for check-in.</p>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Notes</label>
+                  <textarea
+                    value={form.note}
+                    onChange={(e) => updateForm("note", e.target.value)}
+                    className="min-h-[110px] w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900"
+                  />
+                </div>
+
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    type="submit"
+                    className="h-11 rounded-2xl bg-slate-900 text-white hover:bg-slate-800"
+                    disabled={busy}
+                  >
+                    Save Reservation
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 rounded-2xl border-slate-300 bg-white"
+                    onClick={startNewReservation}
+                    disabled={busy}
+                  >
+                    Reset to New
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 rounded-2xl border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                    onClick={handleCheckIn}
+                    disabled={
+                      busy ||
+                      !form.reservationId ||
+                      !form.reservedRoomId ||
+                      form.reservationStatus === "Checked In" ||
+                      form.reservationStatus === "Checked Out" ||
+                      form.reservationStatus === "Cancelled" ||
+                      form.reservationStatus === "No Show"
+                    }
+                  >
+                    Check In to Front Office
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </AppShell>
   );

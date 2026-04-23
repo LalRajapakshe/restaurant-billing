@@ -1,0 +1,36 @@
+import { FolioEntry } from "@/types/folio";
+
+export const mockFolioEntries: FolioEntry[] = [
+  {
+    id: "FOL-ROOM-RM-118",
+    roomId: "RM-118",
+    roomNo: "118",
+    guestName: "Fernando Family",
+    reservationId: "RES-10023",
+    sourceModule: "room",
+    description: "Room Charge • 4 nights @ LKR 22,000",
+    outlet: "Front Office",
+    entryType: "charge",
+    debit: 88000,
+    credit: 0,
+    postedAt: "2026-04-21T09:00:00.000Z",
+    paymentMethod: "System",
+    note: "Generated from active stay details.",
+  },
+  {
+    id: "FOL-ROOM-RM-301",
+    roomId: "RM-301",
+    roomNo: "301",
+    guestName: "Lanka Travels Group",
+    reservationId: "RES-10024",
+    sourceModule: "room",
+    description: "Room Charge • 3 nights @ LKR 32,000",
+    outlet: "Front Office",
+    entryType: "charge",
+    debit: 96000,
+    credit: 0,
+    postedAt: "2026-04-26T09:00:00.000Z",
+    paymentMethod: "System",
+    note: "Generated from active stay details.",
+  },
+];

@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, Search, Users } from "lucide-react";
+import { CalendarDays, Phone, Search, Users } from "lucide-react";
 
 import PanelShell from "@/components/shared/panel-shell";
 import ReservationStatusBadge from "@/components/reservations/reservation-status-badge";
@@ -28,6 +28,10 @@ const filters: Array<ReservationStatus | "All"> = [
   "No Show",
 ];
 
+function currency(value: number) {
+  return `LKR ${value.toLocaleString()}`;
+}
+
 export default function ReservationList({
   reservations,
   activeReservationId,
@@ -40,7 +44,7 @@ export default function ReservationList({
   return (
     <PanelShell
       title="Reservation List"
-      description="Booking queue for arrivals, departures, status updates, and guest planning."
+      description="Booking queue with more stay details visible directly in the left panel, reducing the need for a separate middle summary column."
       minimizedContent={
         <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
           <div className="flex items-center justify-between gap-3">
@@ -86,7 +90,7 @@ export default function ReservationList({
           ))}
         </div>
 
-        <div className="max-h-[760px] space-y-4 overflow-auto pb-2">
+        <div className="max-h-[calc(100vh-21rem)] space-y-4 overflow-auto pb-2">
           {reservations.length > 0 ? (
             reservations.map((reservation) => {
               const active = activeReservationId === reservation.id;
@@ -103,7 +107,7 @@ export default function ReservationList({
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <ReservationStatusBadge status={reservation.status} />
                         <span className={`text-xs ${active ? "text-slate-300" : "text-slate-500"}`}>
                           {reservation.id}
@@ -113,37 +117,39 @@ export default function ReservationList({
                         {reservation.guestName}
                       </p>
                       <p className={`text-sm ${active ? "text-slate-300" : "text-slate-500"}`}>
-                        {reservation.roomType}
+                        {reservation.roomType}{reservation.roomNo ? ` • Room ${reservation.roomNo}` : ""}
                       </p>
                     </div>
 
                     <div className={`rounded-2xl px-3 py-2 text-right ${active ? "bg-white/10" : "bg-slate-50"}`}>
-                      <p className={`text-xs ${active ? "text-slate-300" : "text-slate-500"}`}>Board Basis</p>
+                      <p className={`text-xs ${active ? "text-slate-300" : "text-slate-500"}`}>Estimate</p>
                       <p className={`text-sm font-semibold ${active ? "text-white" : "text-slate-900"}`}>
-                        {reservation.boardBasis}
+                        {currency(reservation.totalEstimate)}
                       </p>
                     </div>
                   </div>
 
-                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm md:grid-cols-3">
-                    <div>
-                      <p className={active ? "text-slate-400" : "text-slate-500"}>Stay</p>
-                      <div className={`mt-1 flex items-center gap-2 font-medium ${active ? "text-white" : "text-slate-900"}`}>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    <div className={`rounded-2xl p-3 ${active ? "bg-white/10" : "bg-slate-50"}`}>
+                      <p className={`text-xs ${active ? "text-slate-300" : "text-slate-500"}`}>Stay</p>
+                      <div className={`mt-1 flex items-center gap-2 text-sm font-medium ${active ? "text-white" : "text-slate-900"}`}>
                         <CalendarDays className="h-4 w-4" />
-                        {reservation.arrivalDate}
+                        {reservation.arrivalDate} → {reservation.departureDate}
                       </div>
-                    </div>
-                    <div>
-                      <p className={active ? "text-slate-400" : "text-slate-500"}>Nights</p>
-                      <p className={`mt-1 font-medium ${active ? "text-white" : "text-slate-900"}`}>
-                        {reservation.nights}
+                      <p className={`mt-1 text-xs ${active ? "text-slate-300" : "text-slate-500"}`}>
+                        {reservation.nights} nights • {reservation.boardBasis}
                       </p>
                     </div>
-                    <div>
-                      <p className={active ? "text-slate-400" : "text-slate-500"}>Guests</p>
-                      <div className={`mt-1 flex items-center gap-2 font-medium ${active ? "text-white" : "text-slate-900"}`}>
+
+                    <div className={`rounded-2xl p-3 ${active ? "bg-white/10" : "bg-slate-50"}`}>
+                      <p className={`text-xs ${active ? "text-slate-300" : "text-slate-500"}`}>Guest & Contact</p>
+                      <div className={`mt-1 flex items-center gap-2 text-sm font-medium ${active ? "text-white" : "text-slate-900"}`}>
                         <Users className="h-4 w-4" />
-                        {reservation.adults + reservation.children}
+                        {reservation.adults} adults / {reservation.children} children
+                      </div>
+                      <div className={`mt-1 flex items-center gap-2 text-xs ${active ? "text-slate-300" : "text-slate-500"}`}>
+                        <Phone className="h-3.5 w-3.5" />
+                        {reservation.mobile}
                       </div>
                     </div>
                   </div>

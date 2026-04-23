@@ -49,7 +49,7 @@ export default function RoomAllocationForm({
   return (
     <PanelShell
       title={mode === "allocate" ? "Room Allocation / Check-In" : "Update Stay"}
-      description="Front office action panel for room allocation, check-in, reservation linkage, and active stay editing."
+      description="Front office stay editor. For occupied rooms, updating nights or room rate also refreshes the room-charge basis used in the folio."
       minimizedContent={
         <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
           <p className="font-medium text-slate-900">

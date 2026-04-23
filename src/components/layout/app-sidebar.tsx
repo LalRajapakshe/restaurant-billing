@@ -17,7 +17,7 @@ export default function AppSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-full border-b border-slate-200 bg-white md:min-h-screen md:w-72 md:border-b-0 md:border-r">
+    <aside className="w-full shrink-0 border-b border-slate-200 bg-white md:sticky md:top-0 md:h-screen md:w-72 md:overflow-y-auto md:border-b-0 md:border-r">
       <div className="border-b border-slate-200 px-5 py-5">
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
           Hotel Operations
@@ -26,7 +26,7 @@ export default function AppSidebar() {
           Unified Management
         </h1>
         <p className="mt-2 text-sm leading-6 text-slate-500">
-          Sprint 1 application shell for hotel, restaurant, and housekeeping operations.
+          Hotel, restaurant, front office, housekeeping, and reporting in one system shell.
         </p>
       </div>
 
@@ -39,15 +39,17 @@ export default function AppSidebar() {
             <Link
               key={item.href}
               href={item.href}
-              className={`rounded-2xl border px-4 py-3 transition ${active
+              className={`rounded-2xl border px-4 py-3 transition ${
+                active
                   ? "border-slate-900 bg-slate-900 text-white shadow-sm"
                   : "border-slate-200 bg-white text-slate-900 hover:border-slate-300 hover:bg-slate-50"
-                }`}
+              }`}
             >
               <div className="flex items-start gap-3">
                 <div
-                  className={`rounded-xl p-2 ${active ? "bg-white/10 text-white" : "bg-slate-100 text-slate-700"
-                    }`}
+                  className={`rounded-xl p-2 ${
+                    active ? "bg-white/10 text-white" : "bg-slate-100 text-slate-700"
+                  }`}
                 >
                   <Icon className="h-4 w-4" />
                 </div>

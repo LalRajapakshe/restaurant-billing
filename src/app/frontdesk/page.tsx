@@ -2,13 +2,9 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Building2,
   CircleDollarSign,
   Hotel,
-  Plus,
-  ReceiptText,
   TableProperties,
-  UtensilsCrossed,
   Wallet,
 } from "lucide-react";
 
@@ -16,24 +12,102 @@ import BillList from "@/components/frontdesk/bill-list";
 import FrontDeskActionsPanel from "@/components/frontdesk/frontdesk-actions-panel";
 import JobList from "@/components/frontdesk/job-list";
 import SelectedJobSummary from "@/components/frontdesk/selected-job-summary";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import AppShell from "@/components/layout/app-shell";
 import { mockOutlets } from "@/data/mock-outlets";
-import { mockRooms } from "@/data/mock-rooms";
 import { GuestType, MealType, OutletRecord, RestaurantBillType } from "@/types/restaurant";
 
 type JobStatus = "Open" | "Partially Paid" | "Ready to Close" | "Closed";
 type MessageTone = "success" | "warning" | "info";
 type ActionTab = "job" | "bill" | "payment";
 
-type BillItem = {
-  name: string;
-  qty: number;
-  amount: number;
+type ApiEnvelope<T> = {
+  success: boolean;
+  data: T;
+  error?: string;
+};
+
+type JobApiRow = {
+  restaurantJobId: number;
+  jobNo: string;
+  outletLocationId: number;
+  tableNo: string;
+  guestType: GuestType;
+  stayId?: number | null;
+  roomId?: number | null;
+  roomNo?: string | null;
+  customerName: string;
+  mobileNo?: string | null;
+  jobStatus: JobStatus;
+  openedAt: string;
+  closedAt?: string | null;
+};
+
+type BillApiRow = {
+  restaurantBillId: number;
+  billNo: string;
+  billType: RestaurantBillType;
+  mealType?: MealType | null;
+  grossAmount: number;
+  paidAmount: number;
+  balanceAmount: number;
+  billStatus: string;
+  postedToFolio: boolean;
+  postedFolioEntryId?: number | null;
+  postedAt?: string | null;
+  createdAt: string;
+  items: Array<{
+    restaurantBillItemId: number;
+    restaurantBillId: number;
+    itemId?: number | null;
+    itemGroupId?: number | null;
+    itemCategoryId?: number | null;
+    itemName: string;
+    qty: number;
+    unitPrice: number;
+    lineAmount: number;
+    note?: string | null;
+  }>;
+};
+
+type RoomOptionApi = {
+  roomId: number;
+  roomNo: string;
+  currentStatus: string;
+  stayId?: number | null;
+  guestName?: string | null;
+  mobileNo?: string | null;
+  boardBasisName?: string | null;
+};
+
+type ItemOptionApi = {
+  itemId: number;
+  itemCode: string;
+  itemName: string;
+  itemAlias?: string | null;
+  itemCategoryId?: number | null;
+  unitPrice?: number | null;
+};
+
+type Job = {
+  dbId: number;
+  id: string;
+  table: string;
+  mobile: string;
+  customer: string;
+  openedAt: string;
+  isClosed: boolean;
+  guestType: GuestType;
+  roomNo?: string;
+  outlet: string;
+  stayId?: number | null;
+  roomId?: number | null;
 };
 
 type Bill = {
+  dbId?: number;
   billNo: string;
   type: RestaurantBillType;
   mealType?: MealType | null;
@@ -44,19 +118,11 @@ type Bill = {
   paid: number;
   balance: number;
   createdAt: string;
-  items: BillItem[];
-};
-
-type Job = {
-  id: string;
-  table: string;
-  mobile: string;
-  customer: string;
-  openedAt: string;
-  isClosed: boolean;
-  guestType: GuestType;
-  roomNo?: string;
-  outlet: string;
+  items: Array<{
+    name: string;
+    qty: number;
+    amount: number;
+  }>;
 };
 
 type JobMetrics = {
@@ -70,153 +136,29 @@ type JobMetrics = {
 
 type JobView = Job & JobMetrics;
 
-const ALL_TABLES = [
-  "T01",
-  "T02",
-  "T03",
-  "T04",
-  "T05",
-  "T06",
-  "T07",
-  "T08",
-  "T09",
-  "T10",
-  "T11",
-  "T12",
-  "VIP-01",
-  "VIP-02",
-];
-
-const INITIAL_JOBS: Job[] = [
-  {
-    id: "JOB-24031",
-    table: "T03",
-    mobile: "077 334 2211",
-    customer: "Walk-in / Silva",
-    openedAt: "12:22 PM",
-    isClosed: false,
-    guestType: "FIT",
-    outlet: "Main Restaurant",
-  },
-  {
-    id: "JOB-24032",
-    table: "T07",
-    mobile: "071 885 9014",
-    customer: "Pool Guest / Rashan",
-    openedAt: "12:40 PM",
-    isClosed: false,
-    guestType: "FIT",
-    outlet: "Pool Bar",
-  },
-  {
-    id: "JOB-24033",
-    table: "T11",
-    mobile: "078 455 3390",
-    customer: "Fernando Family",
-    openedAt: "1:05 PM",
-    isClosed: false,
-    guestType: "Room Guest",
-    roomNo: "118",
-    outlet: "Main Restaurant",
-  },
-  {
-    id: "JOB-24034",
-    table: "VIP-01",
-    mobile: "075 903 4412",
-    customer: "Lanka Travels Group",
-    openedAt: "1:18 PM",
-    isClosed: false,
-    guestType: "Room Guest",
-    roomNo: "301",
-    outlet: "Main Restaurant",
-  },
-];
-
-const INITIAL_BILLS: Record<string, Bill[]> = {
-  "JOB-24031": [
-    {
-      billNo: "BILL-92001",
-      type: "KOT",
-      guestType: "FIT",
-      outlet: "Main Restaurant",
-      amount: 8350,
-      paid: 5000,
-      balance: 3350,
-      createdAt: "12:30 PM",
-      items: [
-        { name: "Chicken Fried Rice", qty: 2, amount: 2400 },
-        { name: "Devilled Chicken", qty: 1, amount: 1900 },
-        { name: "VAT + Service", qty: 1, amount: 4050 },
-      ],
-    },
-  ],
-  "JOB-24032": [
-    {
-      billNo: "BILL-92005",
-      type: "BOT",
-      guestType: "FIT",
-      outlet: "Pool Bar",
-      amount: 5200,
-      paid: 0,
-      balance: 5200,
-      createdAt: "12:48 PM",
-      items: [
-        { name: "Mocktail", qty: 2, amount: 1800 },
-        { name: "Milkshake", qty: 2, amount: 1600 },
-        { name: "Snacks", qty: 1, amount: 1800 },
-      ],
-    },
-  ],
-  "JOB-24033": [
-    {
-      billNo: "BILL-92011",
-      type: "Main Meal",
-      mealType: "Lunch",
-      guestType: "Room Guest",
-      outlet: "Main Restaurant",
-      roomNo: "118",
-      amount: 6200,
-      paid: 0,
-      balance: 6200,
-      createdAt: "1:12 PM",
-      items: [
-        { name: "Main Meal - Lunch", qty: 2, amount: 6200 },
-      ],
-    },
-    {
-      billNo: "BILL-92012",
-      type: "BOT",
-      guestType: "Room Guest",
-      outlet: "Main Restaurant",
-      roomNo: "118",
-      amount: 2800,
-      paid: 0,
-      balance: 2800,
-      createdAt: "1:25 PM",
-      items: [
-        { name: "Fresh Juice", qty: 2, amount: 1800 },
-        { name: "Dessert", qty: 1, amount: 1000 },
-      ],
-    },
-  ],
-  "JOB-24034": [
-    {
-      billNo: "BILL-92015",
-      type: "KOT",
-      guestType: "Room Guest",
-      outlet: "Main Restaurant",
-      roomNo: "301",
-      amount: 9400,
-      paid: 0,
-      balance: 9400,
-      createdAt: "1:32 PM",
-      items: [
-        { name: "Party Set Menu", qty: 1, amount: 7600 },
-        { name: "VAT + Service", qty: 1, amount: 1800 },
-      ],
-    },
-  ],
+type RoomGuestOption = {
+  roomNo: string;
+  guestName: string;
+  mobile: string;
+  boardBasis: string;
+  stayId: number;
+  roomId: number;
 };
+
+type RestaurantItemOption = {
+  itemId: number;
+  itemCode: string;
+  itemName: string;
+  itemAlias?: string | null;
+  itemCategoryId?: number | null;
+  unitPrice?: number | null;
+};
+
+const ALL_TABLES = [
+  "T01", "T02", "T03", "T04", "T05", "T06",
+  "T07", "T08", "T09", "T10", "T11", "T12",
+  "VIP-01", "VIP-02",
+];
 
 const FILTERS = [
   "All",
@@ -232,8 +174,29 @@ function currency(value: number) {
   return `LKR ${value.toLocaleString()}`;
 }
 
-function currentTimeLabel() {
-  return new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+function formatTimeLabel(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+async function readJson<T>(input: RequestInfo | URL, init?: RequestInit) {
+  const response = await fetch(input, {
+    ...init,
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers ?? {}),
+    },
+  });
+
+  const json = (await response.json().catch(() => ({}))) as ApiEnvelope<T>;
+
+  if (!response.ok || !json.success) {
+    throw new Error(json.error || "Request failed.");
+  }
+
+  return json.data;
 }
 
 function computeJobMetrics(job: Job, bills: Bill[]): JobMetrics {
@@ -273,42 +236,27 @@ function toneClasses(tone: MessageTone) {
   return "border-sky-200 bg-sky-50 text-sky-800";
 }
 
-function fireAndForget(url: string, payload: unknown) {
-  void fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  }).catch(() => undefined);
+function outletNameFromLocationId(locationId: number, outlets: OutletRecord[]) {
+  if (locationId === 1) {
+    return outlets[0]?.name ?? "Main Restaurant";
+  }
+  return outlets[0]?.name ?? "Main Restaurant";
 }
 
 export default function RestaurantBillingFrontDeskPage() {
   const [actionTab, setActionTab] = useState<ActionTab>("bill");
   const [activeFilter, setActiveFilter] = useState<(typeof FILTERS)[number]>("All");
-  const [jobs, setJobs] = useState<Job[]>(INITIAL_JOBS);
-  const [billsByJob, setBillsByJob] = useState<Record<string, Bill[]>>(INITIAL_BILLS);
-  const [activeJobId, setActiveJobId] = useState<string>("JOB-24031");
-  const [outlets, setOutlets] = useState<OutletRecord[]>(mockOutlets);
-  const [message, setMessage] = useState<{ tone: MessageTone; text: string } | null>({
-    tone: "info",
-    text: "Restaurant billing is now hotel-aware. FIT guests settle directly, while room guests can be posted to folio with Main Meal support.",
-  });
+  const [search, setSearch] = useState("");
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [billsByJob, setBillsByJob] = useState<Record<string, Bill[]>>({});
+  const [activeJobId, setActiveJobId] = useState<string>("");
+  const [outlets] = useState<OutletRecord[]>(mockOutlets);
+  const [roomGuestOptions, setRoomGuestOptions] = useState<RoomGuestOption[]>([]);
+  const [itemOptions, setItemOptions] = useState<RestaurantItemOption[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState<{ tone: MessageTone; text: string } | null>(null);
 
-  const jobCounterRef = useRef(24034);
-  const billCounterRef = useRef(92015);
   const actionPanelRef = useRef<HTMLDivElement | null>(null);
-
-  const roomGuestOptions = useMemo(() => {
-    return mockRooms
-      .filter((room) => room.status === "Occupied")
-      .map((room) => ({
-        roomNo: room.roomNo,
-        guestName: room.guestName,
-        mobile: room.mobile,
-        boardBasis: room.boardBasis,
-      }));
-  }, []);
 
   const [newJobForm, setNewJobForm] = useState({
     table: "T01",
@@ -322,6 +270,7 @@ export default function RestaurantBillingFrontDeskPage() {
   const [billForm, setBillForm] = useState({
     type: "KOT" as RestaurantBillType,
     mealType: "Breakfast" as MealType,
+    itemId: "",
     itemName: "",
     qty: "1",
     unitPrice: "",
@@ -333,35 +282,6 @@ export default function RestaurantBillingFrontDeskPage() {
     method: "Cash" as "Cash" | "Card" | "Transfer",
   });
 
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadOutlets() {
-      try {
-        const response = await fetch("/api/outlets", { cache: "no-store" });
-        if (!response.ok) throw new Error("Outlet API failed");
-        const json = await response.json();
-        const nextOutlets = Array.isArray(json?.data) ? (json.data as OutletRecord[]) : mockOutlets;
-
-        if (!isMounted) return;
-        setOutlets(nextOutlets);
-        setNewJobForm((prev) => ({
-          ...prev,
-          outlet: prev.outlet || nextOutlets[0]?.name || "Main Restaurant",
-        }));
-      } catch {
-        if (!isMounted) return;
-        setOutlets(mockOutlets);
-      }
-    }
-
-    loadOutlets();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
   const jobsView = useMemo<JobView[]>(() => {
     return jobs.map((job) => {
       const metrics = computeJobMetrics(job, billsByJob[job.id] ?? []);
@@ -369,35 +289,39 @@ export default function RestaurantBillingFrontDeskPage() {
     });
   }, [jobs, billsByJob]);
 
-  const activeJob = jobsView.find((job) => job.id === activeJobId) ?? jobsView[0] ?? null;
+  const activeJob = useMemo(() => {
+    return jobsView.find((job) => job.id === activeJobId) ?? jobsView[0] ?? null;
+  }, [jobsView, activeJobId]);
+
   const activeBills = activeJob ? billsByJob[activeJob.id] ?? [] : [];
 
   const availableTables = useMemo(() => {
-    const occupied = new Set(jobsView.filter((job) => job.status !== "Closed").map((job) => job.table));
+    const occupied = new Set(
+      jobsView.filter((job) => job.status !== "Closed").map((job) => job.table)
+    );
     return ALL_TABLES.filter((table) => !occupied.has(table));
   }, [jobsView]);
 
-  useEffect(() => {
-    if (!activeJob && jobsView.length > 0) {
-      setActiveJobId(jobsView[0].id);
-    }
-  }, [activeJob, jobsView]);
-
-  useEffect(() => {
-    if (availableTables.length > 0 && !availableTables.includes(newJobForm.table)) {
-      setNewJobForm((prev) => ({ ...prev, table: availableTables[0] }));
-    }
-  }, [availableTables, newJobForm.table]);
-
   const filteredJobs = useMemo(() => {
     return jobsView.filter((job) => {
-      if (activeFilter === "All") return true;
-      if (activeFilter === "FIT" || activeFilter === "Room Guest") {
-        return job.guestType === activeFilter;
-      }
-      return job.status === activeFilter;
+      const filterOk =
+        activeFilter === "All"
+          ? true
+          : activeFilter === "FIT" || activeFilter === "Room Guest"
+            ? job.guestType === activeFilter
+            : job.status === activeFilter;
+
+      const q = search.trim().toLowerCase();
+      const searchOk =
+        !q ||
+        job.id.toLowerCase().includes(q) ||
+        job.table.toLowerCase().includes(q) ||
+        job.mobile.toLowerCase().includes(q) ||
+        job.customer.toLowerCase().includes(q);
+
+      return filterOk && searchOk;
     });
-  }, [jobsView, activeFilter]);
+  }, [jobsView, activeFilter, search]);
 
   const openJobsCount = jobsView.filter((job) => job.status !== "Closed").length;
   const todaySales = jobsView.reduce((sum, job) => sum + job.subtotal, 0);
@@ -418,7 +342,144 @@ export default function RestaurantBillingFrontDeskPage() {
     });
   }
 
-  function handleCreateJob(e: React.FormEvent) {
+  async function loadRoomGuestOptions() {
+    const roomRows = await readJson<RoomOptionApi[]>("/api/rooms");
+    const next = roomRows
+      .filter((room) => room.currentStatus === "Occupied" && !!room.stayId)
+      .map((room) => ({
+        roomNo: room.roomNo,
+        guestName: room.guestName ?? "",
+        mobile: room.mobileNo ?? "",
+        boardBasis: room.boardBasisName ?? "Room Only",
+        stayId: Number(room.stayId),
+        roomId: Number(room.roomId),
+      }));
+
+    setRoomGuestOptions(next);
+  }
+
+  async function loadItemOptions() {
+    const itemRows = await readJson<ItemOptionApi[]>("/api/erp/items");
+    setItemOptions(
+      itemRows.map((row) => ({
+        itemId: Number(row.itemId),
+        itemCode: row.itemCode,
+        itemName: row.itemName,
+        itemAlias: row.itemAlias ?? null,
+        itemCategoryId: row.itemCategoryId ?? null,
+        unitPrice: row.unitPrice != null ? Number(row.unitPrice) : null,
+      }))
+    );
+  }
+
+  async function loadJobsAndBills(preferredJobNo?: string) {
+    const jobRows = await readJson<JobApiRow[]>("/api/restaurant/jobs");
+    const mappedJobs: Job[] = jobRows.map((row) => ({
+      dbId: Number(row.restaurantJobId),
+      id: row.jobNo,
+      table: row.tableNo,
+      mobile: row.mobileNo ?? "",
+      customer: row.customerName,
+      openedAt: formatTimeLabel(row.openedAt),
+      isClosed: row.jobStatus === "Closed",
+      guestType: row.guestType,
+      roomNo: row.roomNo ?? "",
+      outlet: outletNameFromLocationId(Number(row.outletLocationId ?? 1), outlets),
+      stayId: row.stayId ?? null,
+      roomId: row.roomId ?? null,
+    }));
+
+    const billsEntries = await Promise.all(
+      mappedJobs.map(async (job) => {
+        const billRows = await readJson<BillApiRow[]>(
+          `/api/restaurant/jobs/${job.dbId}/bills`
+        );
+        const mappedBills: Bill[] = billRows.map((billRow) => ({
+          dbId: Number(billRow.restaurantBillId),
+          billNo: billRow.billNo,
+          type: billRow.billType,
+          mealType: billRow.mealType ?? null,
+          guestType: job.guestType,
+          outlet: job.outlet,
+          roomNo: job.roomNo,
+          amount: Number(billRow.grossAmount ?? 0),
+          paid: Number(billRow.paidAmount ?? 0),
+          balance: Number(billRow.balanceAmount ?? 0),
+          createdAt: formatTimeLabel(billRow.createdAt),
+          items: (billRow.items ?? []).map((item) => ({
+            name: item.itemName,
+            qty: Number(item.qty ?? 0),
+            amount: Number(item.lineAmount ?? 0),
+          })),
+        }));
+        return [job.id, mappedBills] as const;
+      })
+    );
+
+    setJobs(mappedJobs);
+    setBillsByJob(Object.fromEntries(billsEntries));
+
+    const nextActiveJobId =
+      preferredJobNo ??
+      activeJobId ??
+      mappedJobs[0]?.id ??
+      "";
+
+    setActiveJobId(nextActiveJobId);
+
+    if (availableTables.length > 0) {
+      setNewJobForm((prev) => ({
+        ...prev,
+        table: availableTables.includes(prev.table) ? prev.table : availableTables[0] ?? "T01",
+      }));
+    }
+  }
+
+  async function refreshRestaurant(preferredJobNo?: string) {
+    await loadJobsAndBills(preferredJobNo);
+  }
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function init() {
+      try {
+        setLoading(true);
+        await Promise.all([loadRoomGuestOptions(), loadItemOptions()]);
+        if (!mounted) return;
+        await loadJobsAndBills();
+      } catch (error) {
+        console.error("Restaurant Billing init failed", error);
+        if (mounted) {
+          showMessage("Failed to load restaurant billing DB data.", "warning");
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void init();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!activeJob && jobsView.length > 0) {
+      setActiveJobId(jobsView[0].id);
+    }
+  }, [activeJob, jobsView]);
+
+  useEffect(() => {
+    if (availableTables.length > 0 && !availableTables.includes(newJobForm.table)) {
+      setNewJobForm((prev) => ({ ...prev, table: availableTables[0] }));
+    }
+  }, [availableTables, newJobForm.table]);
+
+  async function handleCreateJob(e: React.FormEvent) {
     e.preventDefault();
 
     if (!newJobForm.table) {
@@ -426,70 +487,69 @@ export default function RestaurantBillingFrontDeskPage() {
       return;
     }
 
-    if (newJobForm.guestType === "Room Guest" && !newJobForm.roomNo) {
-      showMessage("Select an occupied room for room guest billing.", "warning");
-      return;
+    let selectedRoomGuest: RoomGuestOption | null = null;
+
+    if (newJobForm.guestType === "Room Guest") {
+      selectedRoomGuest =
+        roomGuestOptions.find((item) => item.roomNo === newJobForm.roomNo) ?? null;
+
+      if (!selectedRoomGuest) {
+        showMessage("Select an occupied room for room guest billing.", "warning");
+        return;
+      }
     }
 
     if (newJobForm.guestType === "FIT" && !newJobForm.customer.trim()) {
-      showMessage("Customer name is required for FIT / outside guest jobs.", "warning");
+      showMessage("Customer name is required for FIT jobs.", "warning");
       return;
     }
 
-    jobCounterRef.current += 1;
-    const nextJobId = `JOB-${jobCounterRef.current}`;
+    try {
+      const created = await readJson<JobApiRow>("/api/restaurant/jobs", {
+        method: "POST",
+        body: JSON.stringify({
+          outletLocationId: 1,
+          tableNo: newJobForm.table,
+          guestType: newJobForm.guestType,
+          stayId: selectedRoomGuest?.stayId ?? null,
+          roomId: selectedRoomGuest?.roomId ?? null,
+          customerName:
+            selectedRoomGuest?.guestName ??
+            newJobForm.customer.trim(),
+          mobileNo: selectedRoomGuest?.mobile ?? newJobForm.mobile.trim(),
+          createdByUserId: null,
+        }),
+      });
 
-    const roomGuest = roomGuestOptions.find((item) => item.roomNo === newJobForm.roomNo);
+      await refreshRestaurant(created.jobNo);
 
-    const newJob: Job = {
-      id: nextJobId,
-      table: newJobForm.table,
-      mobile:
+      setNewJobForm({
+        table: availableTables.filter((table) => table !== newJobForm.table)[0] ?? "T01",
+        mobile: "",
+        customer: "",
+        guestType: "FIT",
+        roomNo: "",
+        outlet: outlets[0]?.name ?? "Main Restaurant",
+      });
+
+      showMessage(
         newJobForm.guestType === "Room Guest"
-          ? roomGuest?.mobile ?? newJobForm.mobile.trim()
-          : newJobForm.mobile.trim(),
-      customer:
-        newJobForm.guestType === "Room Guest"
-          ? roomGuest?.guestName ?? newJobForm.customer.trim()
-          : newJobForm.customer.trim(),
-      openedAt: currentTimeLabel(),
-      isClosed: false,
-      guestType: newJobForm.guestType,
-      roomNo: newJobForm.guestType === "Room Guest" ? newJobForm.roomNo : "",
-      outlet: newJobForm.outlet,
-    };
+          ? `Room guest job ${created.jobNo} opened for Room ${selectedRoomGuest?.roomNo}.`
+          : `FIT job ${created.jobNo} opened for ${newJobForm.table}.`,
+        "success"
+      );
 
-    const nextTable = availableTables.filter((table) => table !== newJobForm.table)[0] ?? "";
-
-    setJobs((prev) => [newJob, ...prev]);
-    setBillsByJob((prev) => ({ ...prev, [nextJobId]: [] }));
-    setActiveJobId(nextJobId);
-    setActionTab("bill");
-    setBillForm({
-      type: "KOT",
-      mealType: "Breakfast",
-      itemName: "",
-      qty: "1",
-      unitPrice: "",
-    });
-    setNewJobForm({
-      table: nextTable,
-      mobile: "",
-      customer: "",
-      guestType: "FIT",
-      roomNo: "",
-      outlet: outlets[0]?.name ?? "Main Restaurant",
-    });
-
-    showMessage(
-      newJob.guestType === "Room Guest"
-        ? `Room guest job ${nextJobId} opened for Room ${newJob.roomNo}.`
-        : `FIT job ${nextJobId} opened for ${newJob.table}.`,
-      "success"
-    );
+      openActionPanel("bill");
+    } catch (error) {
+      console.error("Failed to create restaurant job", error);
+      showMessage(
+        error instanceof Error ? error.message : "Failed to create restaurant job.",
+        "warning"
+      );
+    }
   }
 
-  function handleAddBill(e: React.FormEvent) {
+  async function handleAddBill(e: React.FormEvent) {
     e.preventDefault();
 
     if (!activeJob) {
@@ -502,230 +562,258 @@ export default function RestaurantBillingFrontDeskPage() {
       return;
     }
 
-    if (billForm.type === "Main Meal" && activeJob.guestType !== "Room Guest") {
-      showMessage("Main Meal is allowed only for in-house room guests.", "warning");
-      return;
-    }
-
-    if (billForm.type === "Main Meal" && !billForm.mealType) {
-      showMessage("Choose a meal type for Main Meal posting.", "warning");
-      return;
-    }
-
     const qty = Number(billForm.qty);
     const unitPrice = Number(billForm.unitPrice);
-
-    if (billForm.type !== "Main Meal" && !billForm.itemName.trim()) {
-      showMessage("Enter an item name for the bill.", "warning");
-      return;
-    }
 
     if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(unitPrice) || unitPrice <= 0) {
       showMessage("Quantity and unit price must be valid positive numbers.", "warning");
       return;
     }
 
-    billCounterRef.current += 1;
-    const nextBillNo = `BILL-${billCounterRef.current}`;
-    const amount = qty * unitPrice;
+    if (billForm.type !== "Main Meal" && !billForm.itemName.trim()) {
+      showMessage("Select or enter an item name before saving the bill.", "warning");
+      return;
+    }
 
-    const resolvedItemName =
-      billForm.type === "Main Meal"
-        ? `Main Meal - ${billForm.mealType}`
-        : billForm.itemName.trim();
+    if (billForm.type === "Main Meal" && activeJob.guestType !== "Room Guest") {
+      showMessage("Main Meal is allowed only for room guest jobs.", "warning");
+      return;
+    }
 
-    const newBill: Bill = {
-      billNo: nextBillNo,
-      type: billForm.type,
-      mealType: billForm.type === "Main Meal" ? billForm.mealType : null,
-      guestType: activeJob.guestType,
-      outlet: activeJob.outlet,
-      roomNo: activeJob.roomNo,
-      amount,
-      paid: 0,
-      balance: amount,
-      createdAt: currentTimeLabel(),
-      items: [
-        {
-          name: resolvedItemName,
-          qty,
-          amount,
-        },
-      ],
-    };
+    try {
+      await readJson(`/api/restaurant/jobs/${activeJob.dbId}/bills`, {
+        method: "POST",
+        body: JSON.stringify({
+          billType: billForm.type,
+          mealType: billForm.type === "Main Meal" ? billForm.mealType : null,
+          createdByUserId: null,
+          items: [
+            {
+              itemId:
+                billForm.type === "Main Meal"
+                  ? null
+                  : billForm.itemId
+                    ? Number(billForm.itemId)
+                    : null,
+              itemCategoryId: null,
+              itemName:
+                billForm.type === "Main Meal"
+                  ? `Main Meal - ${billForm.mealType}`
+                  : billForm.itemName.trim(),
+              qty,
+              unitPrice,
+              lineAmount: qty * unitPrice,
+              note: null,
+            },
+          ],
+        }),
+      });
 
-    setBillsByJob((prev) => ({
-      ...prev,
-      [activeJob.id]: [newBill, ...(prev[activeJob.id] ?? [])],
-    }));
+      await refreshRestaurant(activeJob.id);
 
-    setBillForm({
-      type: activeJob.guestType === "Room Guest" ? "Main Meal" : "KOT",
-      mealType: "Breakfast",
-      itemName: "",
-      qty: "1",
-      unitPrice: "",
-    });
+      setBillForm({
+        type: activeJob.guestType === "Room Guest" ? "Main Meal" : "KOT",
+        mealType: "Breakfast",
+        itemId: "",
+        itemName: "",
+        qty: "1",
+        unitPrice: "",
+      });
 
-    showMessage(
-      activeJob.guestType === "Room Guest"
-        ? `${newBill.type} bill ${nextBillNo} added and prepared for room folio posting.`
-        : `${newBill.type} bill ${nextBillNo} added for direct restaurant settlement.`,
-      "success"
-    );
+      showMessage(`Bill saved under ${activeJob.id}.`, "success");
+    } catch (error) {
+      console.error("Failed to add bill", error);
+      showMessage(
+        error instanceof Error ? error.message : "Failed to add bill.",
+        "warning"
+      );
+    }
   }
 
-  function distributePayment(sourceBills: Bill[], requestedAmount: number, target: string) {
-    let remaining = requestedAmount;
-    let applied = 0;
-
-    const updatedBills = sourceBills.map((bill) => {
-      if (remaining <= 0) return bill;
-      if (bill.balance <= 0) return bill;
-      if (target !== "ALL" && bill.billNo !== target) return bill;
-
-      const appliedToBill = Math.min(bill.balance, remaining);
-      remaining -= appliedToBill;
-      applied += appliedToBill;
-
-      return {
-        ...bill,
-        paid: bill.paid + appliedToBill,
-        balance: bill.balance - appliedToBill,
-      };
-    });
-
-    return { updatedBills, applied };
-  }
-
-  function handleApplyPayment(fullSettlement: boolean) {
+  async function handleApplyPayment(fullSettlement: boolean) {
     if (!activeJob) {
       showMessage("Select a job before applying payment.", "warning");
       return;
     }
 
     if (activeJob.guestType === "Room Guest") {
-      showMessage("Room guest bills should be posted to room folio instead of direct settlement here.", "warning");
+      showMessage("Room guest bills should be posted to folio instead of direct settlement here.", "warning");
       return;
     }
 
-    if (activeBills.length === 0) {
-      showMessage("There are no bills under the selected job.", "warning");
+    const outstandingBills = activeBills.filter((bill) => bill.balance > 0 && !!bill.dbId);
+    if (outstandingBills.length === 0) {
+      showMessage("No outstanding FIT bill found for payment.", "warning");
       return;
     }
 
-    const outstanding = activeJob.balance;
-    const requestedAmount = fullSettlement ? outstanding : Number(paymentForm.amount);
+    try {
+      if (fullSettlement) {
+        if (paymentForm.target === "ALL") {
+          for (const bill of outstandingBills) {
+            await readJson(`/api/restaurant/bills/${bill.dbId}/pay`, {
+              method: "POST",
+              body: JSON.stringify({
+                amount: bill.balance,
+                method: paymentForm.method,
+                fullSettlement: true,
+              }),
+            });
+          }
+        } else {
+          const selectedBill = outstandingBills.find(
+            (bill) => bill.billNo === paymentForm.target
+          );
 
-    if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
-      showMessage("Enter a valid payment amount.", "warning");
-      return;
-    }
+          if (!selectedBill?.dbId) {
+            showMessage("Select a valid bill for settlement.", "warning");
+            return;
+          }
 
-    const { updatedBills, applied } = distributePayment(activeBills, requestedAmount, paymentForm.target);
+          await readJson(`/api/restaurant/bills/${selectedBill.dbId}/pay`, {
+            method: "POST",
+            body: JSON.stringify({
+              amount: selectedBill.balance,
+              method: paymentForm.method,
+              fullSettlement: true,
+            }),
+          });
+        }
+      } else {
+        const amount = Number(paymentForm.amount);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          showMessage("Enter a valid payment amount.", "warning");
+          return;
+        }
 
-    if (applied <= 0) {
-      showMessage("No payment could be applied to the selected target bill.", "warning");
-      return;
-    }
+        if (paymentForm.target === "ALL") {
+          let remainingAmount = amount;
 
-    const newBalance = updatedBills.reduce((sum, bill) => sum + bill.balance, 0);
-    const shouldClose = newBalance === 0 && updatedBills.length > 0;
+          for (const bill of outstandingBills) {
+            if (!bill.dbId || remainingAmount <= 0) {
+              continue;
+            }
 
-    setBillsByJob((prev) => ({
-      ...prev,
-      [activeJob.id]: updatedBills,
-    }));
+            const appliedAmount = Math.min(remainingAmount, bill.balance);
 
-    setJobs((prev) =>
-      prev.map((job) => (job.id === activeJob.id ? { ...job, isClosed: shouldClose } : job))
-    );
+            await readJson(`/api/restaurant/bills/${bill.dbId}/pay`, {
+              method: "POST",
+              body: JSON.stringify({
+                amount: appliedAmount,
+                method: paymentForm.method,
+                fullSettlement: false,
+              }),
+            });
 
-    setPaymentForm({
-      target: "ALL",
-      amount: shouldClose ? "" : String(newBalance),
-      method: paymentForm.method,
-    });
+            remainingAmount -= appliedAmount;
+          }
 
-    if (shouldClose) {
+          if (remainingAmount === amount) {
+            showMessage("No valid outstanding FIT bill found for partial payment.", "warning");
+            return;
+          }
+        } else {
+          const selectedBill = outstandingBills.find(
+            (bill) => bill.billNo === paymentForm.target
+          );
+
+          if (!selectedBill?.dbId) {
+            showMessage("Select a valid bill for payment.", "warning");
+            return;
+          }
+
+          await readJson(`/api/restaurant/bills/${selectedBill.dbId}/pay`, {
+            method: "POST",
+            body: JSON.stringify({
+              amount,
+              method: paymentForm.method,
+              fullSettlement: false,
+            }),
+          });
+        }
+      }
+
+      await refreshRestaurant(activeJob.id);
+
+      const refreshedBills = billsByJob[activeJob.id] ?? [];
+      const refreshedOutstanding = refreshedBills.filter((bill) => bill.balance > 0);
+
+      setPaymentForm({
+        target: refreshedOutstanding.length === 1 ? refreshedOutstanding[0].billNo : "ALL",
+        amount: "",
+        method: paymentForm.method,
+      });
+
+      setActionTab("payment");
+      showMessage(`FIT payment saved for ${activeJob.id}.`, "success");
+    } catch (error) {
+      console.error("Failed to apply FIT payment", error);
       showMessage(
-        `${currency(applied)} received via ${paymentForm.method}. ${activeJob.id} is fully settled and ${activeJob.table} is now available.`,
-        "success"
-      );
-      setActionTab("job");
-    } else {
-      showMessage(
-        `${currency(applied)} received via ${paymentForm.method}. Remaining balance for ${activeJob.id} is ${currency(newBalance)}.`,
-        "success"
+        error instanceof Error ? error.message : "Failed to apply restaurant payment.",
+        "warning"
       );
     }
   }
 
-  function handlePostToFolio() {
-    if (!activeJob) {
+  async function handlePostToFolio() {
+    if (!activeJob || activeJob.guestType !== "Room Guest") {
       showMessage("Select a room guest job before folio posting.", "warning");
       return;
     }
 
-    if (activeJob.guestType !== "Room Guest") {
-      showMessage("Only room guest jobs can be posted to folio.", "warning");
+    const outstandingBills = activeBills.filter((bill) => bill.balance > 0 && !!bill.dbId);
+    const targetBills =
+      paymentForm.target === "ALL"
+        ? outstandingBills
+        : outstandingBills.filter((bill) => bill.billNo === paymentForm.target);
+
+    if (targetBills.length === 0) {
+      showMessage("No outstanding room-guest bill is available for folio posting.", "warning");
       return;
     }
 
-    if (!activeJob.roomNo) {
-      showMessage("Room reference is missing for folio posting.", "warning");
-      return;
+    try {
+      for (const bill of targetBills) {
+        await readJson(`/api/restaurant/bills/${bill.dbId}/post-to-folio`, {
+          method: "POST",
+          body: JSON.stringify({
+            postedByUserId: null,
+            note: `Posted from job ${activeJob.id}`,
+          }),
+        });
+      }
+
+      await refreshRestaurant(activeJob.id);
+
+      setPaymentForm({
+        target: "ALL",
+        amount: "",
+        method: "Cash",
+      });
+
+      showMessage(
+        `${targetBills.length} bill(s) from ${activeJob.id} posted to Room ${activeJob.roomNo} folio.`,
+        "success"
+      );
+    } catch (error) {
+      console.error("Failed to post to folio", error);
+      showMessage(
+        error instanceof Error ? error.message : "Failed to post room guest bill to folio.",
+        "warning"
+      );
     }
-
-    if (activeJob.balance <= 0) {
-      showMessage("This job has no outstanding amount to post.", "warning");
-      return;
-    }
-
-    const updatedBills = activeBills.map((bill) => ({
-      ...bill,
-      paid: bill.amount,
-      balance: 0,
-    }));
-
-    setBillsByJob((prev) => ({
-      ...prev,
-      [activeJob.id]: updatedBills,
-    }));
-
-    setJobs((prev) =>
-      prev.map((job) =>
-        job.id === activeJob.id
-          ? {
-              ...job,
-              isClosed: true,
-            }
-          : job
-      )
-    );
-
-    fireAndForget("/api/folio-postings", {
-      roomNo: activeJob.roomNo,
-      guestName: activeJob.customer,
-      outlet: activeJob.outlet,
-      sourceJobId: activeJob.id,
-      amount: activeJob.balance,
-      billingType: updatedBills[0]?.type ?? "KOT",
-      mealType: updatedBills.find((bill) => bill.type === "Main Meal")?.mealType ?? null,
-    });
-
-    showMessage(
-      `${activeJob.id} posted to Room ${activeJob.roomNo} folio. Table ${activeJob.table} is available again.`,
-      "success"
-    );
-    setActionTab("job");
   }
 
   function focusPaymentForBill(bill: Bill) {
     setActionTab("payment");
 
     if (activeJob?.guestType === "Room Guest") {
-      showMessage(`Posting panel prepared for room folio posting from ${bill.billNo}.`, "info");
+      setPaymentForm({
+        target: bill.billNo,
+        amount: "",
+        method: "Cash",
+      });
+      showMessage(`Posting panel prepared for ${bill.billNo}.`, "info");
     } else {
       setPaymentForm({
         target: bill.billNo,
@@ -743,116 +831,130 @@ export default function RestaurantBillingFrontDeskPage() {
     });
   }
 
-  function demoPrintBill(bill: Bill) {
+  function handlePrintBill(bill: Bill) {
     showMessage(`Print preview opened for ${bill.billNo} (demo only).`, "info");
   }
 
-  return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(15,23,42,0.08),_transparent_28%),linear-gradient(180deg,#f8fafc_0%,#eef2ff_100%)] p-4 md:p-6">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-6 overflow-hidden rounded-[32px] border border-white/70 bg-slate-900 text-white shadow-2xl">
-          <div className="grid gap-6 p-6 md:grid-cols-[1.3fr_0.7fr] md:p-8">
-            <div>
-              <div className="mb-4 flex flex-wrap items-center gap-3">
-                <Badge className="rounded-full bg-white/10 px-3 py-1.5 text-white hover:bg-white/10">
-                  Restaurant Billing
-                </Badge>
-                <Badge className="rounded-full bg-emerald-500/15 px-3 py-1.5 text-emerald-200">
-                  Sprint 4 Hotel Integration
-                </Badge>
-              </div>
-              <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
-                Hotel-Aware Outlet Billing
-              </h1>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300 md:text-base">
-                Existing restaurant billing now supports FIT guests, room guests, multiple outlets, and Main Meal posting to room folio.
-              </p>
-              <div className="mt-6 flex flex-wrap gap-3">
-                <Button
-                  className="rounded-2xl bg-white text-slate-900 hover:bg-slate-100"
-                  onClick={() => openActionPanel("job")}
-                >
-                  <Plus className="mr-2 h-4 w-4" /> Open New Job
-                </Button>
-                <Button
-                  variant="outline"
-                  className="rounded-2xl border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white"
-                  onClick={() => openActionPanel("bill")}
-                >
-                  <ReceiptText className="mr-2 h-4 w-4" /> New Bill Under Job
-                </Button>
-              </div>
-            </div>
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 p-6">
+        <div className="mx-auto max-w-7xl rounded-3xl border border-slate-200 bg-white p-8 text-sm text-slate-500 shadow-sm">
+          Loading restaurant billing from DB API...
+        </div>
+      </div>
+    );
+  }
 
-            <div className="grid grid-cols-2 gap-3 self-end">
-              <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
-                <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Open Jobs</p>
-                <p className="mt-3 text-3xl font-semibold">{openJobsCount}</p>
-                <p className="mt-1 text-sm text-slate-400">{roomGuestJobs} room guest jobs</p>
-              </div>
-              <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
-                <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Outstanding</p>
-                <p className="mt-3 text-3xl font-semibold">{currency(outstandingTotal)}</p>
-                <p className="mt-1 text-sm text-slate-400">{outlets.length} outlets configured</p>
-              </div>
-            </div>
-          </div>
+return (
+  <AppShell
+    title="Restaurant Billing"
+    description="Hotel-aware outlet billing with live DB-backed job, bill, FIT payment, and room folio posting flow."
+  >
+    <div className="w-full space-y-6">
+      <div className="flex flex-wrap items-center gap-3 rounded-[28px] border border-slate-200/80 bg-white/90 p-4 shadow-sm backdrop-blur">
+        <div className="rounded-[24px] bg-black px-6 py-3 text-white shadow-sm">
+          <p className="text-xl font-semibold tracking-tight">Restaurant Billing</p>
         </div>
 
-        {message ? (
-          <div className={`mb-6 rounded-3xl border px-4 py-3 text-sm ${toneClasses(message.tone)}`}>
-            {message.text}
+        <div className="ml-auto grid min-w-[260px] gap-3 sm:grid-cols-2">
+          <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Open Jobs</p>
+            <p className="mt-1 text-2xl font-semibold text-slate-900">{openJobsCount}</p>
           </div>
-        ) : null}
-
-        <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {[
-            {
-              label: "Today Sales",
-              value: currency(todaySales),
-              helper: "All outlet billing totals in demo",
-              icon: CircleDollarSign,
-            },
-            {
-              label: "Open Tables",
-              value: String(openJobsCount),
-              helper: "Jobs still active in outlets",
-              icon: TableProperties,
-            },
-            {
-              label: "Available Tables",
-              value: String(availableTables.length),
-              helper: `${ALL_TABLES.length} total configured tables`,
-              icon: Hotel,
-            },
-            {
-              label: "Room Guest Jobs",
-              value: String(roomGuestJobs),
-              helper: "Eligible for room folio posting",
-              icon: Wallet,
-            },
-          ].map((card) => {
-            const Icon = card.icon;
-            return (
-              <Card key={card.label} className="rounded-[28px] border-white/60 bg-white/90 shadow-sm backdrop-blur">
-                <CardContent className="flex items-start justify-between p-5">
-                  <div>
-                    <p className="text-sm text-slate-500">{card.label}</p>
-                    <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
-                      {card.value}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">{card.helper}</p>
-                  </div>
-                  <div className="rounded-2xl bg-slate-100 p-3 text-slate-700">
-                    <Icon className="h-5 w-5" />
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+          <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Outstanding</p>
+            <p className="mt-1 text-2xl font-semibold text-slate-900">{currency(outstandingTotal)}</p>
+          </div>
         </div>
+      </div>
 
-        <div className="grid gap-6 xl:grid-cols-[1.05fr_1.2fr_0.95fr]">
+{message ? (
+  <div className={`rounded-3xl border px-4 py-3 text-sm ${toneClasses(message.tone)}`}>
+    {message.text}
+  </div>
+) : null}
+
+<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+  {[
+    {
+      label: "Today Sales",
+      value: currency(todaySales),
+      helper: "Current DB-backed billing totals",
+      icon: CircleDollarSign,
+    },
+    {
+      label: "Open Tables",
+      value: String(openJobsCount),
+      helper: "Jobs still active in outlets",
+      icon: TableProperties,
+    },
+    {
+      label: "Available Tables",
+      value: String(availableTables.length),
+      helper: `${ALL_TABLES.length} total configured tables`,
+      icon: Hotel,
+    },
+    {
+      label: "Room Guest Jobs",
+      value: String(roomGuestJobs),
+      helper: "Eligible for room folio posting",
+      icon: Wallet,
+    },
+  ].map((card) => {
+    const Icon = card.icon;
+    return (
+      <Card key={card.label} className="rounded-[28px] border-white/60 bg-white/90 shadow-sm backdrop-blur">
+        <CardContent className="flex items-start justify-between p-5">
+          <div>
+            <p className="text-sm text-slate-500">{card.label}</p>
+            <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
+              {card.value}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">{card.helper}</p>
+          </div>
+          <div className="rounded-2xl bg-slate-100 p-3 text-slate-700">
+            <Icon className="h-5 w-5" />
+          </div>
+        </CardContent>
+      </Card>
+    );
+  })}
+</div>
+
+<div className="w-full">
+  <SelectedJobSummary
+    activeJob={activeJob}
+    currency={currency}
+    onAddBill={() => openActionPanel("bill")}
+    onTakePayment={() => {
+      if (!activeJob) return;
+      const outstandingBills = activeBills.filter((bill) => bill.balance > 0);
+      const defaultTarget =
+        outstandingBills.length === 1 ? outstandingBills[0].billNo : "ALL";
+
+      setPaymentForm({
+        target: defaultTarget,
+        amount: String(activeJob.balance),
+        method: "Cash",
+      });
+      openActionPanel("payment");
+    }}
+  />
+</div>
+
+<div className="flex justify-start">
+  <div className="w-full max-w-[420px]">
+    <Input
+      value={search}
+      onChange={(e) => setSearch(e.target.value)}
+      placeholder="Search by job no, table, mobile, customer"
+      className="h-11 rounded-2xl border-slate-200 bg-white"
+    />
+  </div>
+</div>
+
+<div className="grid items-start gap-6 xl:grid-cols-[1.08fr_1fr]">
+        <div className="min-w-0">
           <JobList
             filters={FILTERS}
             activeFilter={activeFilter}
@@ -861,142 +963,58 @@ export default function RestaurantBillingFrontDeskPage() {
             activeJobId={activeJob?.id ?? null}
             onSelectJob={setActiveJobId}
           />
+        </div>
 
-          <div className="space-y-6">
-            <SelectedJobSummary
-              activeJob={activeJob}
-              currency={currency}
-              onAddBill={() => openActionPanel("bill")}
-              onTakePayment={() => openActionPanel("payment")}
-            />
-
-            <BillList
-              activeJob={
-                activeJob
-                  ? {
-                      status: activeJob.status,
-                      guestType: activeJob.guestType,
-                      roomNo: activeJob.roomNo,
-                      outlet: activeJob.outlet,
-                    }
-                  : null
-              }
-              activeBills={activeBills}
-              currency={currency}
-              onNewKOTBill={() => {
-                setBillForm((prev) => ({ ...prev, type: "KOT" }));
-                openActionPanel("bill");
-              }}
-              onNewBOTBill={() => {
-                setBillForm((prev) => ({ ...prev, type: "BOT" }));
-                openActionPanel("bill");
-              }}
-              onNewMainMealBill={() => {
-                setBillForm((prev) => ({ ...prev, type: "Main Meal", mealType: "Breakfast" }));
-                openActionPanel("bill");
-              }}
-              onPrintBill={demoPrintBill}
-              onPayBill={focusPaymentForBill}
-            />
-          </div>
-
-          <div className="space-y-6">
-            <div ref={actionPanelRef}>
-              <FrontDeskActionsPanel
-                actionTab={actionTab}
-                setActionTab={setActionTab}
-                activeJob={
-                  activeJob
-                    ? {
-                        id: activeJob.id,
-                        table: activeJob.table,
-                        customer: activeJob.customer,
-                        balance: activeJob.balance,
-                        bills: activeJob.bills,
-                        status: activeJob.status,
-                        guestType: activeJob.guestType,
-                        roomNo: activeJob.roomNo,
-                        outlet: activeJob.outlet,
-                      }
-                    : null
-                }
-                activeBills={activeBills.map((bill) => ({
-                  billNo: bill.billNo,
-                  balance: bill.balance,
-                }))}
-                availableTables={availableTables}
-                outletOptions={outlets.map((item) => item.name)}
-                roomGuestOptions={roomGuestOptions}
-                newJobForm={newJobForm}
-                setNewJobForm={setNewJobForm}
-                onCreateJob={handleCreateJob}
-                billForm={billForm}
-                setBillForm={setBillForm}
-                onAddBill={handleAddBill}
-                paymentForm={paymentForm}
-                setPaymentForm={setPaymentForm}
-                onApplyPayment={handleApplyPayment}
-                onPostToFolio={handlePostToFolio}
-                currency={currency}
-              />
-            </div>
-
-            <Card className="rounded-[28px] border-white/60 bg-white/90 shadow-sm backdrop-blur">
-              <CardHeader>
-                <CardTitle className="text-xl">Outlet / Income Centers</CardTitle>
-                <p className="mt-1 text-sm text-slate-500">
-                  Billing now supports more than one outlet within the same property.
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {outlets.map((outlet) => (
-                  <div key={outlet.id} className="flex items-center justify-between rounded-3xl bg-slate-50 p-4">
-                    <div>
-                      <p className="font-medium text-slate-900">{outlet.name}</p>
-                      <p className="text-sm text-slate-500">{outlet.category}</p>
-                    </div>
-                    <div className="rounded-2xl bg-white p-3 text-slate-700 shadow-sm">
-                      <Building2 className="h-4 w-4" />
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            <Card className="rounded-[28px] border-white/60 bg-white/90 shadow-sm backdrop-blur">
-              <CardHeader>
-                <CardTitle className="text-xl">Hotel Restaurant Rules</CardTitle>
-                <p className="mt-1 text-sm text-slate-500">
-                  Sprint 4 behavior added on top of the existing restaurant interface.
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm text-slate-600">
-                <div className="flex items-start gap-3 rounded-3xl bg-slate-50 p-4">
-                  <UtensilsCrossed className="mt-0.5 h-4 w-4 text-slate-700" />
-                  <div>
-                    <p className="font-medium text-slate-900">Main Meal</p>
-                    <p>Breakfast, Lunch, Dinner, and A la carte are enabled only for in-house room guests.</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3 rounded-3xl bg-slate-50 p-4">
-                  <Wallet className="mt-0.5 h-4 w-4 text-slate-700" />
-                  <div>
-                    <p className="font-medium text-slate-900">Room Folio Posting</p>
-                    <p>Room guest restaurant bills are landed to room folio instead of direct outlet settlement.</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3 rounded-3xl bg-slate-50 p-4">
-                  <ReceiptText className="mt-0.5 h-4 w-4 text-slate-700" />
-                  <div>
-                    <p className="font-medium text-slate-900">FIT vs Room Guest</p>
-                    <p>FIT guests settle at restaurant. Room guests carry room reference and folio-ready posting flow.</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+        <div ref={actionPanelRef} className="min-w-0">
+          <FrontDeskActionsPanel
+            actionTab={actionTab}
+            setActionTab={setActionTab}
+            activeJob={activeJob}
+            activeBills={activeBills.map((bill) => ({
+              billNo: bill.billNo,
+              balance: bill.balance,
+            }))}
+            availableTables={availableTables}
+            outletOptions={outlets.map((item) => item.name)}
+            roomGuestOptions={roomGuestOptions}
+            itemOptions={itemOptions}
+            newJobForm={newJobForm}
+            setNewJobForm={setNewJobForm}
+            onCreateJob={handleCreateJob}
+            billForm={billForm}
+            setBillForm={setBillForm}
+            onAddBill={handleAddBill}
+            paymentForm={paymentForm}
+            setPaymentForm={setPaymentForm}
+            onApplyPayment={handleApplyPayment}
+            onPostToFolio={handlePostToFolio}
+            currency={currency}
+          />
         </div>
       </div>
+
+      <div className="w-full">
+        <BillList
+          activeJob={activeJob}
+          activeBills={activeBills}
+          currency={currency}
+          onNewKOTBill={() => {
+            setBillForm((prev) => ({ ...prev, type: "KOT" }));
+            openActionPanel("bill");
+          }}
+          onNewBOTBill={() => {
+            setBillForm((prev) => ({ ...prev, type: "BOT" }));
+            openActionPanel("bill");
+          }}
+          onNewMainMealBill={() => {
+            setBillForm((prev) => ({ ...prev, type: "Main Meal" }));
+            openActionPanel("bill");
+          }}
+          onPrintBill={handlePrintBill}
+          onPayBill={focusPaymentForBill}
+        />
+      </div>
     </div>
-  );
+  </AppShell>
+);
 }

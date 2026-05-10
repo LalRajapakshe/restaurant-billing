@@ -238,12 +238,12 @@ export default function HousekeepingPage() {
       description="Live housekeeping task board with DB-backed status updates and room readiness synchronization."
     >
       {message ? (
-        <div className={`mb-6 rounded-3xl border px-4 py-3 text-sm ${toneClasses(message.tone)}`}>
+        <div className={`mb-4 rounded-3xl border px-4 py-3 text-sm ${toneClasses(message.tone)}`}>
           {message.text}
         </div>
       ) : null}
 
-      <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {[
           {
             label: "Dirty",
@@ -273,7 +273,7 @@ export default function HousekeepingPage() {
           const Icon = card.icon;
           return (
             <Card key={card.label} className="rounded-[28px] border-white/60 bg-white/90 shadow-sm backdrop-blur">
-              <CardContent className="flex items-start justify-between p-5">
+              <CardContent className="flex items-start justify-between p-4">
                 <div>
                   <p className="text-sm text-slate-500">{card.label}</p>
                   <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
@@ -290,9 +290,9 @@ export default function HousekeepingPage() {
         })}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.05fr_1.2fr]">
+      <div className="grid gap-4 xl:grid-cols-[1.08fr_1.18fr]">
         <Card className="rounded-[28px] border-white/60 bg-white/90 shadow-sm backdrop-blur">
-          <CardContent className="p-5">
+          <CardContent className="p-4">
             <div className="mb-4 flex flex-wrap items-center gap-3">
               <div className="relative min-w-[260px] flex-1">
                 <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
@@ -388,9 +388,9 @@ export default function HousekeepingPage() {
         </Card>
 
         <Card className="rounded-[28px] border-white/60 bg-white/90 shadow-sm backdrop-blur">
-          <CardContent className="p-5">
+          <CardContent className="p-4">
             {taskDetail ? (
-              <div className="space-y-5">
+              <div className="space-y-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <p className="text-xl font-semibold text-slate-900">Room {taskDetail.roomNo}</p>

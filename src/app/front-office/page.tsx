@@ -575,17 +575,17 @@ export default function FrontOfficePage() {
       description="DB-bound Front Office screen with live room list, room detail, folio, stay update, payment, and checkout refresh."
     >
       {message ? (
-        <div className={`mb-6 rounded-3xl border px-4 py-3 text-sm ${toneClasses(message.tone)}`}>
+        <div className={`mb-4 rounded-3xl border px-4 py-3 text-sm ${toneClasses(message.tone)}`}>
           {message.text}
         </div>
       ) : null}
 
-      <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {summaryCards.map((card) => {
           const Icon = card.icon;
           return (
             <Card key={card.label} className="rounded-[28px] border-white/60 bg-white/90 shadow-sm backdrop-blur">
-              <CardContent className="flex items-start justify-between p-5">
+              <CardContent className="flex items-start justify-between p-4">
                 <div>
                   <p className="text-sm text-slate-500">{card.label}</p>
                   <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{card.value}</p>
@@ -600,7 +600,7 @@ export default function FrontOfficePage() {
         })}
       </div>
 
-      <div className="grid min-h-[calc(100vh-18rem)] gap-6 xl:grid-cols-[1.15fr_1.35fr]">
+      <div className="grid min-h-[calc(100vh-18rem)] gap-4 xl:grid-cols-[1.15fr_1.35fr]">
         <div className="min-h-0">
           <RoomList
             rooms={filteredRooms}
@@ -616,9 +616,9 @@ export default function FrontOfficePage() {
           />
         </div>
 
-        <div className="min-h-0 space-y-6 overflow-y-auto pr-1">
+        <div className="min-h-0 space-y-4 overflow-y-auto pr-1">
           <Card className="rounded-[28px] border-white/60 bg-white/90 shadow-sm backdrop-blur">
-            <CardContent className="p-5">
+            <CardContent className="p-4">
               {selectedRoom ? (
                 <div className="space-y-4">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -732,7 +732,7 @@ export default function FrontOfficePage() {
         </div>
       </div>
 
-      <div className="mt-6 rounded-3xl border border-slate-200 bg-white/90 p-4 text-xs text-slate-500 shadow-sm">
+      <div className="mt-4 rounded-3xl border border-slate-200 bg-white/90 p-4 text-xs text-slate-500 shadow-sm">
         API mode: <span className="font-medium text-slate-700">{apiMode}</span>.{" "}
         {busy ? "Processing action..." : "Room, stay, folio, payment, and checkout now refresh from DB endpoints."}
       </div>

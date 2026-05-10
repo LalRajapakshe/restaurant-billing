@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
+  Database,
   Hotel,
   LayoutDashboard,
   Menu,
@@ -25,6 +26,8 @@ type AppShellProps = {
   children: ReactNode;
   showHeader?: boolean;
   fullBleed?: boolean;
+  headerActions?: ReactNode;
+  titleAsPill?: boolean;
 };
 
 type NavItem = {
@@ -39,6 +42,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/front-office", label: "Front Office", icon: Hotel },
   { href: "/frontdesk", label: "Restaurant Billing", icon: UtensilsCrossed },
   { href: "/housekeeping", label: "Housekeeping", icon: ClipboardCheck },
+  { href: "/master-data", label: "Master Data", icon: Database },
 ];
 
 const STORAGE_KEY = "hotel-shell-sidebar-collapsed";
@@ -53,6 +57,8 @@ export default function AppShell({
   children,
   showHeader = true,
   fullBleed = false,
+  headerActions,
+  titleAsPill = false,
 }: AppShellProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -64,13 +70,13 @@ export default function AppShell({
       if (stored === "1") {
         setCollapsed(true);
       }
-    } catch {}
+    } catch { }
   }, []);
 
   useEffect(() => {
     try {
       window.localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0");
-    } catch {}
+    } catch { }
   }, [collapsed]);
 
   useEffect(() => {
@@ -227,13 +233,25 @@ export default function AppShell({
                 </button>
 
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-xl font-semibold tracking-tight text-slate-950">
-                    {title}
-                  </p>
+                  {titleAsPill ? (
+                    <div className="inline-flex rounded-[24px] bg-black px-6 py-3 text-white shadow-sm">
+                      <p className="truncate text-xl font-semibold tracking-tight">{title}</p>
+                    </div>
+                  ) : (
+                    <p className="truncate text-xl font-semibold tracking-tight text-slate-950">
+                      {title}
+                    </p>
+                  )}
                   {description ? (
-                    <p className="mt-1 truncate text-sm text-slate-500">{description}</p>
+                    <p className="mt-2 truncate text-sm text-slate-500">{description}</p>
                   ) : null}
                 </div>
+
+                {headerActions ? (
+                  <div className="hidden shrink-0 items-center gap-3 xl:flex">
+                    {headerActions}
+                  </div>
+                ) : null}
 
                 <div className="hidden shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500 shadow-sm md:flex">
                   <span className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />

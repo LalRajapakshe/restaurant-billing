@@ -7,6 +7,12 @@ export type SqlParam = {
   value: unknown;
   type?: unknown;
 };
+type SqlInput = {
+  name: string;
+  type: any;
+  value: unknown;
+};
+
 
 function bindParams(request: SqlRequest, params: SqlParam[] = []) {
   for (const param of params) {
@@ -31,6 +37,7 @@ export async function executeProcedure<T = Record<string, unknown>>(
   return request.execute<T>(procedureName);
 }
 
+/*
 export async function queryRows<T = Record<string, unknown>>(
   queryText: string,
   params: SqlParam[] = []
@@ -40,7 +47,7 @@ export async function queryRows<T = Record<string, unknown>>(
   const result = await request.query<T>(queryText);
   return result.recordset;
 }
-
+*/
 export async function withTransaction<T>(
   work: (transaction: Transaction) => Promise<T>
 ) {
@@ -67,5 +74,26 @@ export async function executeProcedureInTransaction<T = Record<string, unknown>>
   const request = bindParams(new sql.Request(transaction), params);
   return request.execute<T>(procedureName);
 }
+
+
+export async function queryRows<T>(query: string, inputs: SqlInput[] = []) {
+  const pool = await getDbPool();
+  const request = pool.request();
+  for (const input of inputs) {
+    request.input(input.name, input.type, input.value as any);
+  }
+  const result = await request.query<T>(query);
+  return result.recordset ?? [];
+}
+
+export async function executeQuery<T>(query: string, inputs: SqlInput[] = []) {
+  const pool = await getDbPool();
+  const request = pool.request();
+  for (const input of inputs) {
+    request.input(input.name, input.type, input.value as any);
+  }
+  return request.query<T>(query);
+}
+
 
 export { sql };

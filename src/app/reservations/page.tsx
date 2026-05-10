@@ -470,12 +470,12 @@ export default function ReservationsPage() {
       description="DB-bound reservation creation, update, room assignment, and check-in handoff."
     >
       {message ? (
-        <div className={`mb-6 rounded-3xl border px-4 py-3 text-sm ${toneClasses(message.tone)}`}>
+        <div className={`mb-4 rounded-3xl border px-4 py-3 text-sm ${toneClasses(message.tone)}`}>
           {message.text}
         </div>
       ) : null}
 
-      <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {[
           {
             label: "Tentative",
@@ -505,7 +505,7 @@ export default function ReservationsPage() {
           const Icon = card.icon;
           return (
             <Card key={card.label} className="rounded-[28px] border-white/60 bg-white/90 shadow-sm backdrop-blur">
-              <CardContent className="flex items-start justify-between p-5">
+              <CardContent className="flex items-start justify-between p-4">
                 <div>
                   <p className="text-sm text-slate-500">{card.label}</p>
                   <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
@@ -522,9 +522,9 @@ export default function ReservationsPage() {
         })}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.05fr_1.3fr]">
+      <div className="grid gap-4 xl:grid-cols-[1.08fr_1.28fr]">
         <Card className="rounded-[28px] border-white/60 bg-white/90 shadow-sm backdrop-blur">
-          <CardContent className="p-5">
+          <CardContent className="p-4">
             <div className="mb-4 flex flex-wrap items-center gap-3">
               <div className="relative min-w-[260px] flex-1">
                 <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
@@ -620,9 +620,9 @@ export default function ReservationsPage() {
           </CardContent>
         </Card>
 
-        <div className="space-y-6">
+        <div className="space-y-4">
           <Card className="rounded-[28px] border-white/60 bg-white/90 shadow-sm backdrop-blur">
-            <CardContent className="p-5">
+            <CardContent className="p-4">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <p className="text-xl font-semibold text-slate-900">
@@ -681,9 +681,9 @@ export default function ReservationsPage() {
           </Card>
 
           <Card className="rounded-[28px] border-white/60 bg-white/90 shadow-sm backdrop-blur">
-            <CardContent className="p-5">
-              <form className="space-y-5" onSubmit={handleSaveReservation}>
-                <div className="grid gap-4 md:grid-cols-2">
+            <CardContent className="p-4">
+              <form className="space-y-4" onSubmit={handleSaveReservation}>
+                <div className="grid gap-3 md:grid-cols-2">
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-700">Guest Name</label>
                     <Input
@@ -702,7 +702,7 @@ export default function ReservationsPage() {
                   </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-3 md:grid-cols-2">
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-700">Email</label>
                     <Input
@@ -725,7 +725,7 @@ export default function ReservationsPage() {
                   </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-700">Arrival Date</label>
                     <Input
@@ -766,7 +766,7 @@ export default function ReservationsPage() {
                   </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-700">Assigned Room</label>
                     <select
@@ -814,7 +814,7 @@ export default function ReservationsPage() {
                   </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-700">Advance Payment</label>
                     <Input
